@@ -1,0 +1,32 @@
+/* Página do jogo: a tela 3D ocupa tudo; a tela inicial e os avisos do PC ficam por cima. */
+:root { --fundo: #0c1a24; --texto: #e8f3f2; --texto2: #9fb8bf; --lima: #8fd651; --aqua: #4fd6d0; }
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--fundo); color: var(--texto); font-family: Nunito, system-ui, sans-serif; overflow: hidden; }
+#app { position: fixed; inset: 0; }
+#mundo { position: absolute; inset: 0; }
+#mundo canvas { display: block; }
+.carregando { margin: 40vh auto 0; text-align: center; color: var(--texto2); }
+
+/* tela inicial: o desenho aprovado (SVG) sempre inteiro na tela, com botões invisíveis por cima */
+#inicio { position: absolute; inset: 0; background: var(--fundo); display: flex; align-items: center; justify-content: center; z-index: 10; }
+#inicio[hidden] { display: none; }
+#inicio .palco { position: relative; width: min(100vw, calc(100vh * 16 / 9)); }
+#inicio .palco svg { display: block; width: 100%; height: 100%; }
+#inicio .alvos { position: absolute; inset: 0; }
+#inicio .alvo { position: absolute; background: transparent; border: 0; border-radius: 999px; cursor: pointer; padding: 0; }
+#inicio .alvo:hover { box-shadow: 0 0 0 3px var(--lima); }
+#inicio .alvo:focus-visible { outline: 4px solid var(--lima); outline-offset: 3px; }
+
+/* PC: mira, dica, selo "versão adaptada" e medidor */
+#hud { position: absolute; inset: 0; pointer-events: none; z-index: 5; }
+#hud[hidden] { display: none; }
+#hud .mira { position: absolute; left: 50%; top: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; transform: rotate(45deg); border: 2.5px solid var(--lima); }
+#hud .mira[hidden], #hud .dica[hidden] { display: none; }
+#hud .dica { position: absolute; left: 50%; top: calc(50% + 28px); transform: translateX(-50%); background: rgba(12, 26, 36, 0.86); border: 2px solid var(--lima);
+  border-radius: 999px; padding: 6px 18px; font: 700 18px Nunito, sans-serif; white-space: nowrap; }
+#hud .dica.embaixo { top: 54px; }
+#hud .selo-pc { position: absolute; left: 14px; top: 12px; font: 700 13px Nunito, sans-serif; color: var(--texto2); background: rgba(12, 26, 36, 0.7); padding: 4px 10px; border-radius: 8px; }
+#hud .clique { position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%); background: rgba(12, 26, 36, 0.9); border: 2px solid var(--aqua);
+  border-radius: 16px; padding: 14px 26px; font: 800 24px 'Baloo 2', sans-serif; }
+#hud .clique[hidden], #hud .qps[hidden] { display: none; }
+#hud .qps { position: absolute; right: 14px; top: 12px; font: 800 16px Nunito, sans-serif; color: var(--lima); }

@@ -1,0 +1,25 @@
+{
+  "name": "jogo-xp-vr-gaburaverso",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Experiência VR no GaburaVERSO: a Nave do Gaburaverso, para Meta Quest 3S (WebXR) com versão adaptada para PC.",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "qrcode": "node testes/gerar_qrcode.mjs"
+  },
+  "dependencies": {
+    "@fontsource/baloo-2": "5.1.1",
+    "@fontsource/nunito": "5.1.1",
+    "three": "0.170.0"
+  },
+  "devDependencies": {
+    "@types/three": "0.170.0",
+    "qrcode": "1.5.4",
+    "typescript": "5.7.3",
+    "vite": "6.0.7"
+  }
+}
