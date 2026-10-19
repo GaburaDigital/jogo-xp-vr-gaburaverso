@@ -4,3 +4,4 @@ dist_arquivo/
 *.log
 .DS_Store
 testes/fotos/
+__pycache__/

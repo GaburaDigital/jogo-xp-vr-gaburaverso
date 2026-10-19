@@ -161,6 +161,8 @@ const filaAvulsas: { fala: string; ator: string | null }[] = [];
 const jaTocadas = new Set<string>();
 const ultimaDoGrupo = new Map<string, string>();
 const posicaoNaSequencia = new Map<string, number>();
+/** Falas por evento pedidas até agora (para os testes automáticos). */
+export const historicoAvulsas: string[] = [];
 
 /** Toca uma fala por evento (sorteio sem repetir a anterior, sequência ou uma vez só). */
 export function falaPorEvento(idEvento: string): void {
@@ -171,7 +173,7 @@ export function falaPorEvento(idEvento: string): void {
   else { const outras = e.falas.filter((f) => f !== ultimaDoGrupo.get(e.id)); fala = outras[Math.floor(Math.random() * outras.length)] ?? e.falas[0]; ultimaDoGrupo.set(e.id, fala); }
   if (!fala) return;
   const ator = e.ator ?? (biblioteca.falas.get(fala)?.personagem === 'gaburia' ? 'gaburia' : null);
-  filaAvulsas.push({ fala, ator: ator === 'gaburia' ? 'gaburia' : ator });
+  filaAvulsas.push({ fala, ator: ator === 'gaburia' ? 'gaburia' : ator }); historicoAvulsas.push(fala);
   void prepararSons([fala]);
 }
 export function zerarFalasPorEvento(ids: string[]): void { for (const id of ids) { jaTocadas.delete(id); posicaoNaSequencia.delete(id); } }

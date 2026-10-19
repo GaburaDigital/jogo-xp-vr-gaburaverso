@@ -24,24 +24,26 @@ Jogo em **Realidade Virtual** para o **Meta Quest 3S**, feito com WebXR. O jogad
 | Analógico esquerdo | andar | W A S D | andar |
 | Analógico direito | girar (em passos ou contínuo, nas Opções) | Mouse | olhar |
 | Grip (lateral) | segurar / soltar | Clique direito | segurar / soltar |
-| Gatilho | usar, apertar, girar a peça 45° | Clique esquerdo | usar, apertar |
+| Gatilho | usar, apertar, atirar, girar a peça 45° | Clique esquerdo | usar, apertar, atirar |
 | X ou levantar o pulso | relógio | R | relógio |
 | Y | menu (pausa) | Esc | menu (pausa) |
-| A | virar a peça do tangram | E, roda ou clique direito | girar a peça do tangram |
-| | | F | virar a peça do tangram |
+| A | virar a peça do tangram ou o LED | E, roda ou clique direito | girar a peça do tangram |
+| | | F | virar a peça do tangram ou o LED |
 | | | Espaço | pular a fala |
 
 O botão ≡ do controle esquerdo não chega ao navegador no WebXR; por isso o menu abre no **Y**.
 
-## O que já dá para jogar (entrega 1.1)
+## O que já dá para jogar (entrega 2)
 
-- Tela inicial, aviso da versão PC, menu de pausa, Opções (Música, Efeitos, Vozes, giro, conforto, iluminação, legendas), Como jogar e Missão.
+- Tela inicial, aviso da versão PC, menu de pausa, Opções (Música, Efeitos, Vozes, giro, conforto, altura, iluminação, legendas), Como jogar e Missão.
 - **Abertura** completa na sala central: relógio vibrando, janela com o título, caixas para pegar, jogar, empurrar e empilhar.
-- **Ponte**: achar o cyberdeck da Gabura, encaixar no console e montar o foguete do tangram. A luz da ponte acende no fim.
-- Todas as portas funcionam: dá para explorar a nave inteira. As outras missões chegam nas próximas entregas.
+- Depois da abertura, as três missões **em qualquer ordem** (cada uma começa ao entrar na sala dela):
+  - **Ponte**: achar o cyberdeck, encaixar no console e montar o foguete do tangram (no VR a peça vem na mão; solta fora da mesa, volta para o lugar).
+  - **Treinamento**: a máquina de clonagem cospe 8 Gojos e 8 Freds, que se escondem. Do posto (só dá para andar para os lados), pegue a arma de captura laser e atire só no clone: acertar o esconderijo não conta. Soltou a arma ou saiu da sala, ela volta para o suporte.
+  - **Oficina**: montar o circuito na protoboard (jumper vermelho, resistor, LED com a perna longa no +, jumper preto). O resistor queimado e o jumper curto não encaixam; o LED ao contrário não acende (vire com A ou F).
+- Cada missão acende a luz da sala, a do painel, a faixa do chão e o LED do relógio. O portal chega na próxima entrega.
 - O progresso fica salvo no navegador. Com jogo salvo, a tela inicial oferece **Continuar de onde parou** ou **Jogar do início**; no menu de pausa há **Reiniciar missão** e **Recomeçar jogo** (com confirmação).
-- Mãos: luvas de blocos (gatilho dobra o indicador, grip fecha a mão) com o relógio da Gabu_IA no pulso esquerdo.
-- Opções: altura **Em pé / Sentado** e **Ajustar altura agora** (para jogar sentado).
+- Mãos: luvas de blocos (gatilho dobra o indicador, grip fecha a mão) com o relógio da Gabu_IA no pulso esquerdo. Vibradinhas sutis ao chegar perto de algo, segurar, encaixar e tocar nos personagens; forte só no tiro.
 
 ## Desenvolvimento
 

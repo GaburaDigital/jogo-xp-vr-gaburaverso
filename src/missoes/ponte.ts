@@ -10,7 +10,7 @@
 
 import * as THREE from 'three';
 import { instancias } from '../mundo/mundo';
-import { entrada, type Mao } from '../xr/entrada';
+import { entrada, vibrarTipo, type Mao } from '../xr/entrada';
 import { tocar } from '../nucleo/audio';
 import { desativar, ganchos, registrarSeguravel, restaurar, seguraveis, type Seguravel } from '../interacao/seguraveis';
 import { diretor, falaPorEvento, tempoGlobal, zerarFalasPorEvento } from '../cenas/diretor';
@@ -30,7 +30,9 @@ export const ponte = {
 const PIZZAS = ['caixa_pizza_1', 'caixa_pizza_2', 'caixa_pizza_fatia', 'caneca'];
 const INCLINACAO = THREE.MathUtils.degToRad(6.34);   // tampo do console (do GLB)
 const qTampo = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), INCLINACAO);
-const ATRACAO = 0.09;     // m: a peça é puxada para um encaixe que serve até essa distância (rodada 5: "atração maior")
+const ATRACAO_PC = 0.09;  // m: a peça é puxada para um encaixe que serve até essa distância (rodada 5: "atração maior")
+const ATRACAO_VR = 0.13;  // VR (19/10): a peça vem na mão, então a atração é um pouco maior
+const atracao = () => (entrada.modo === 'vr' ? ATRACAO_VR : ATRACAO_PC);
 const TOL_FORMA = 0.008;  // m: cantos da peça e do encaixe precisam coincidir com essa folga
 
 /** Contorno de uma peça visto de cima (x, z), no espaço dela (sem giro). */
@@ -40,11 +42,13 @@ interface Peca { no: THREE.Object3D; nome: string; tipo: string; giro: number; v
 interface Lugar { nome: string; tipo: string; pos: THREE.Vector3; giro: number; ocupado: boolean; pontos: Contorno; centro: THREE.Vector2; }
 let pecas: Peca[] = [];
 let lugares: Lugar[] = [];
-let segurada: { peca: Peca; mao: Mao | null } | null = null;
+let segurada: { peca: Peca; mao: Mao | null; offset: THREE.Vector3 } | null = null;
+const pertoDaMao = new Map<Mao, Peca | null>();
 let consoleRaiz: THREE.Object3D | null = null;
 let pontoCyberdeck: THREE.Object3D | null = null;
 let fantasma: THREE.Mesh | null = null;
 let inicioBusca = -1, ultimaPecaMexida = -1, dicasTangram = 0;
+let maoDoCyberdeck: 'esq' | 'dir' | null = null;
 
 const tipoDe = (nome: string) => nome.replace(/_\d$/, '');
 
@@ -74,7 +78,7 @@ export function montarPonte(): void {
     fantasma.visible = false; pontoCyberdeck.add(fantasma);
   }
   const antesPegar = ganchos.aoPegar;
-  ganchos.aoPegar = (s) => { antesPegar(s); if (s.id === 'cyberdeck') ponte.pegouCyberdeck = true; };
+  ganchos.aoPegar = (s) => { antesPegar(s); if (s.id === 'cyberdeck') { ponte.pegouCyberdeck = true; maoDoCyberdeck = s.mao?.lado ?? null; } };
   const antesSoltar = ganchos.aoSoltar;
   ganchos.aoSoltar = (s) => { antesSoltar(s); if (s.id === 'cyberdeck') tentarEncaixar(s); };
 }
@@ -107,7 +111,7 @@ function encaixarCyberdeck(): void {
   }
   ponte.pegouCyberdeck = true; ponte.encaixou = true;
   if (fantasma) fantasma.visible = false;
-  tocar('sfx_encaixe_cyberdeck', { em: pontoCyberdeck ?? undefined });
+  tocar('sfx_encaixe_cyberdeck', { em: pontoCyberdeck ?? undefined }); vibrarTipo(maoDoCyberdeck, 'encaixe');
 }
 
 // ---------- tangram ----------
@@ -153,7 +157,7 @@ function mesmaForma(a: Contorno, b: Contorno): boolean {
 }
 
 /** Encaixe livre que serve para a peça como ela está (giro e lado), perto o bastante; devolve onde a peça fica. */
-function encaixeQueServe(p: Peca, alcance = ATRACAO): { lugar: Lugar; pos: THREE.Vector3 } | null {
+function encaixeQueServe(p: Peca, alcance = atracao()): { lugar: Lugar; pos: THREE.Vector3 } | null {
   const forma = pontosDaPeca(p.contorno, new THREE.Vector2(), p.giro, p.virada), meio = centroDe(forma);
   const agora = new THREE.Vector2(p.no.position.x + meio.x, p.no.position.z + meio.y);
   let melhor: { lugar: Lugar; pos: THREE.Vector3 } | null = null, d = alcance;
@@ -189,33 +193,40 @@ function pecaPerto(pLocal: THREE.Vector3, raio: number): Peca | null {
   let melhor: Peca | null = null, d = raio;
   for (const p of pecas) {
     const meio = centroDe(pontosDaPeca(p.contorno, new THREE.Vector2(), p.giro, p.virada));
-    const dd = Math.hypot(p.no.position.x + meio.x - pLocal.x, p.no.position.z + meio.y - pLocal.z);
-    if (dd < d && Math.abs(p.no.position.y - pLocal.y) < 0.25) { d = dd; melhor = p; }
+    // uma peça solta ganha de uma já encaixada ali perto (não desmonta o que já está certo sem querer)
+    const dd = Math.hypot(p.no.position.x + meio.x - pLocal.x, p.no.position.z + meio.y - pLocal.z) + (p.encaixada ? 0.04 : 0);
+    if (dd < d && Math.abs(p.no.position.y - pLocal.y) < 0.3) { d = dd; melhor = p; }
   }
   return melhor;
 }
-function pegarPeca(p: Peca, mao: Mao | null): void {
+function pegarPeca(p: Peca, mao: Mao | null, maoLocal?: THREE.Vector3): void {
   // tirar uma peça já encaixada libera o encaixe
   if (p.encaixada) { const l = lugares.find((x) => x.nome === p.encaixada); if (l) l.ocupado = false; p.encaixada = null; }
-  segurada = { peca: p, mao }; tocar('sfx_segurar', { em: p.no }); ultimaPecaMexida = tempoGlobal();
+  // VR: a peça fica presa na mão do jeito que estava (sem pular para o meio da mão)
+  const offset = maoLocal ? p.no.position.clone().sub(maoLocal) : new THREE.Vector3();
+  segurada = { peca: p, mao, offset }; tocar('sfx_segurar', { em: p.no }); ultimaPecaMexida = tempoGlobal();
+  vibrarTipo(mao?.lado, 'segurou');
 }
+/** A peça está em cima do tampo (dentro da borda)? */
+const sobreOTampo = (x: number, z: number) => Math.abs(x) < 0.95 && z > -0.42 && z < 0.42;
 
 function soltarPeca(): void {
   if (!segurada) return;
-  const p = segurada.peca;
+  const p = segurada.peca, lado = segurada.mao?.lado;
   segurada = null; mostrarFantasma(null);
   ultimaPecaMexida = tempoGlobal();
-  const e = encaixeQueServe(p);
+  const x = p.no.position.x, z = p.no.position.z;
+  const pertoDoTampo = p.no.position.y - alturaTampo(z) < 0.25;
+  const e = pertoDoTampo ? encaixeQueServe(p) : null;
   if (e) {
     e.lugar.ocupado = true; p.encaixada = e.lugar.nome;
     porPeca(p, e.pos);
-    tocar('sfx_tangram_encaixa', { em: p.no });
+    tocar('sfx_tangram_encaixa', { em: p.no }); vibrarTipo(lado, 'encaixe');
     if (lugares.every((l) => l.ocupado)) { ponte.tangramPronto = true; ponte.focoPC = false; tocar('sfx_tangram_completo', { em: p.no }); }
     return;
   }
-  // senão: fica onde soltou, se estiver em cima do tampo; fora dele volta para a bandeja
-  const x = p.no.position.x, z = p.no.position.z;
-  if (Math.abs(x) < 0.95 && z > -0.42 && z < 0.42) porPeca(p, new THREE.Vector3(x, alturaTampo(z), z));
+  // senão: em cima da mesa, deita no tampo onde soltou; só se cair FORA da mesa volta para o lugar do começo (19/10)
+  if (sobreOTampo(x, z)) porPeca(p, new THREE.Vector3(x, alturaTampo(z), z));
   else { p.giro = p.inicio.giro; p.virada = false; porPeca(p, p.inicio.pos); }
   tocar('sfx_soltar', { em: p.no });
 }
@@ -271,18 +282,21 @@ function tangramVR(): void {
     const local = paraConsole(m.pose.getWorldPosition(new THREE.Vector3()));
     if (segurada?.mao === m) {
       const p = segurada.peca;
-      // segue a mão em cima do tampo (até 35 cm acima dele); longe demais, solta
-      if (local.y - alturaTampo(local.z) > 0.35 || Math.abs(local.x) > 1.3) { soltarPeca(); continue; }
-      porPeca(p, new THREE.Vector3(local.x, alturaTampo(local.z), local.z), 0.025);
+      // 19/10: a peça vai na mão (livre no ar); continua deitada e só gira pelos botões
+      const alvo = local.clone().add(segurada.offset);
+      if (sobreOTampo(alvo.x, alvo.z)) alvo.y = Math.max(alvo.y, alturaTampo(alvo.z) + 0.01); // não entra no tampo
+      porPeca(p, alvo);
       ponte.dicaTexto = p.tipo === 'peca_paralelogramo' ? 'Gatilho: girar 45° · A: virar' : 'Gatilho: girar 45°'; ponte.dicaLado = m.lado;
       if (m.gatilhoBorda) girarPeca(p);
       if (entrada.virarBorda) virarPeca(p);
-      mostrarFantasma(p);
+      if (alvo.y - alturaTampo(alvo.z) < 0.25) mostrarFantasma(p); else mostrarFantasma(null);
       if (!m.segurar) soltarPeca();
-    } else if (!segurada && m.segurarBorda) {
-      const p = pecaPerto(local, 0.1);
-      if (p) pegarPeca(p, m);
+      continue;
     }
+    const perto = segurada ? null : pecaPerto(local, 0.15);
+    if (perto && perto !== pertoDaMao.get(m)) vibrarTipo(m.lado, 'perto');
+    pertoDaMao.set(m, perto);
+    if (perto && m.segurarBorda) pegarPeca(perto, m, local);
   }
 }
 

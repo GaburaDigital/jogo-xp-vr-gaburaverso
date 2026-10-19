@@ -29,12 +29,18 @@ O jogador acorda na nave do Gaburaverso. A Gabu_IA, pelo relógio do pulso, guia
 - Mãos: luvas de blocos chanfradas (Luva Luar), padrão dos jogos Gabura; cores trocáveis em `src/xr/luvas.ts` (ESTILOS_LUVA). Relógio aprovado no pulso esquerdo, abaixo da palma, pulseira atravessada.
 - Recomeços: "Reiniciar missão" = missão em andamento, senão a última concluída, senão o jogo; "Recomeçar jogo" volta à abertura e apaga o progresso. Sempre com confirmação (botão Coral).
 - Ícone: planeta-cubo original com arco Aqua e selo VR (B1).
-- Colisão: todos os móveis seguram o jogador (no VR só ao andar com o analógico, para dar para se debruçar na mesa).
+- Colisão: todos os móveis seguram o jogador (no VR só ao andar com o analógico, para dar para se debruçar na mesa). Corpo (19/10): 18 cm nas paredes, 12 cm nos móveis; o console do tangram tem colisor mais raso.
+- Pegar (19/10): a mão pega a 15 cm do objeto (20 cm nos pequenos), antes de encostar. No VR o corpo só empurra caixas andando com o analógico (ao se abaixar não empurra).
+- Tangram no VR (19/10): a peça vai na mão, deitada; gira e vira só pelos botões; solta fora da mesa volta para o lugar do começo; em cima da mesa fica onde caiu.
+- Vibração (19/10, para testar): perto de algo (0,12 · 18 ms), segurou (0,3 · 35 ms), encaixe e botão (0,5 · 60 ms), tocar personagem (0,2 · 30 ms, no máximo a cada 0,5 s), tiro (0,9 · 110 ms).
+- Missões em qualquer ordem depois da abertura; entrar na sala de outra missão com uma pela metade volta a anterior ao começo.
+- Treinamento: posto só para os lados durante a captura; arma só na mão que pegou; soltou ou saiu da sala, volta para o suporte. PC: mouse mira, clique atira, clique direito pega e solta.
+- Oficina: o LED começa virado na bandeja (quem não olhar o quadro encaixa ao contrário e aprende a polaridade). PC: câmera de foco como no tangram, F vira o LED.
 
 ## Entregas
 
 1. Base, interface, abertura e ponte. 1.1: luvas, recomeços, altura, tangram novo, colisão dos móveis, ícone.
-2. Treinamento (captura dos clones).
-3. Oficina (circuito).
+2. Treinamento (captura dos clones) e oficina (circuito), com os ajustes do teste da 1.1 (colisão, alcance, tangram na mão, vibração, nome do app).
+3. (juntada com a 2)
 4. Portal, túnel e créditos.
 5. Desempenho e acabamento final.

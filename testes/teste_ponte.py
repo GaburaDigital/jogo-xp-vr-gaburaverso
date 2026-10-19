@@ -45,8 +45,8 @@ with sync_playwright() as p:
         pc = [x for x in J(pg, 'return j.pecas()') if x['nome'] == nome][0]
         a = tela(pc['centro'][0], pc['centro'][1], pc['pos'][1]); d = tela(lug['centro'][0] + 0.03, lug['centro'][1] + 0.02, lug['pos'][1])
         pg.mouse.move(*a); time.sleep(0.2); pg.mouse.down(); time.sleep(0.3)
-        for _ in range(giros): pg.keyboard.press('e'); time.sleep(0.25)
-        for _ in range(virar): pg.keyboard.press('f'); time.sleep(0.25)
+        for _ in range(giros): pg.keyboard.press('e'); time.sleep(0.45)
+        for _ in range(virar): pg.keyboard.press('f'); time.sleep(0.45)
         for i in range(1, 7): pg.mouse.move(a[0] + (d[0]-a[0])*i/6, a[1] + (d[1]-a[1])*i/6); time.sleep(0.08)
         time.sleep(0.4); pg.mouse.up(); time.sleep(0.5)
         return [x for x in J(pg, 'return j.pecas()') if x['nome'] == nome][0]
@@ -70,6 +70,7 @@ with sync_playwright() as p:
         print(nome, '->', r['encaixada'], 'giro', r['giro'], 'tentativas', tent)
     pg.screenshot(path=F+'28_tangram_pronto.png')
     print('pronto:', J(pg, 'return j.ponte.tangramPronto'), 'foco', J(pg, 'return j.ponte.focoPC'))
+    print('estado final:', [(x['nome'], x['encaixada'], x['giro'], x['virada']) for x in J(pg, 'return j.pecas()')])
     print('fim:', pular(pg, 60, lambda: cenas(pg)['ponte_navegacao']['estado'] == 'terminada'), cenas(pg)['ponte_navegacao'])
     time.sleep(2.5)
     J(pg, '__t.olhar(0, 1.4, -17.6)'); time.sleep(1); pg.screenshot(path=F+'29_ponte_acesa.png')

@@ -5,9 +5,9 @@
 
 import * as THREE from 'three';
 import { cena3d, empurrarParaFora, instancias, type Instancia } from '../mundo/mundo';
-import { entrada, type Mao } from '../xr/entrada';
+import { entrada, vibrarTipo, type Mao } from '../xr/entrada';
 import { tocar } from '../nucleo/audio';
-import { posicaoPes } from '../xr/jogador';
+import { jogador, posicaoPes } from '../xr/jogador';
 
 export interface Seguravel {
   id: string;
@@ -27,6 +27,8 @@ export interface Seguravel {
   base: number;                // da origem do objeto até o ponto mais baixo dele (cyberdeck deitado: a origem fica no meio)
   proximaConferida: number;    // quando conferir de novo se ainda tem apoio embaixo // "de pé" deste objeto (ex.: o cyberdeck fica deitado): o giro inicial sem a parte vertical
   ativo: boolean;              // pode pegar agora?
+  alcance: number;             // VR: a mão pega a partir desta distância da caixa do objeto (m)
+  fixo: boolean;               // encaixado num lugar (ex.: LED na protoboard): sem gravidade, mas dá para pegar de novo
 }
 
 export const seguraveis = new Map<string, Seguravel>();
@@ -65,6 +67,8 @@ export function registrarSeguravel(id: string, somImpacto: string | null = 'sfx_
     offset: new THREE.Matrix4(), contorno: criarContorno(inst.obj), somImpacto, ultimoPlim: -9, ultimoImpacto: -9,
     inicial: { pos: inst.raiz.position.clone(), quat: inst.raiz.quaternion.clone(), visivel: inst.raiz.visible }, ativo: true,
     inclinacao: new THREE.Quaternion(), base: Math.max(0, inst.raiz.position.y - caixa.min.y), proximaConferida: 0,
+    // objetos pequenos (menos de 25 cm) pegam de mais longe: a mão não precisa encostar
+    alcance: Math.max(t.x, t.y, t.z) < 0.25 ? 0.2 : 0.15, fixo: false,
   };
   const e0 = new THREE.Euler().setFromQuaternion(inst.raiz.quaternion, 'YXZ');
   s.inclinacao.setFromAxisAngle(new THREE.Vector3(0, 1, 0), -e0.y).multiply(inst.raiz.quaternion);
@@ -76,7 +80,7 @@ export function registrarSeguravel(id: string, somImpacto: string | null = 'sfx_
 export function restaurar(id: string): void {
   const s = seguraveis.get(id); if (!s) return;
   if (s.mao) s.mao = null;
-  s.estado = 'repouso'; s.vel.set(0, 0, 0);
+  s.estado = 'repouso'; s.vel.set(0, 0, 0); s.fixo = false;
   s.inst.raiz.position.copy(s.inicial.pos); s.inst.raiz.quaternion.copy(s.inicial.quat); s.inst.raiz.visible = s.inicial.visivel;
 }
 
@@ -111,7 +115,7 @@ function alturaApoio(s: Seguravel, p: THREE.Vector3, folga = 0.12): number {
 // ---------- mão perto: contorno e "plim" ----------
 const caixaTmp = new THREE.Box3(), pTmp = new THREE.Vector3();
 const raioMira = new THREE.Raycaster();
-/** O objeto mais perto da mão (VR: até 8 cm da caixa dele; PC: o que está na mira, até 2,2 m). */
+/** O objeto mais perto da mão (VR: até 15–20 cm da caixa dele, antes de encostar; PC: o que está na mira, até 2,2 m). */
 export function objetoNaMao(m: Mao): Seguravel | null {
   let melhor: Seguravel | null = null, dMelhor = Infinity;
   if (entrada.modo === 'vr') {
@@ -120,7 +124,7 @@ export function objetoNaMao(m: Mao): Seguravel | null {
       if (!s.ativo || s.estado === 'segurado' || !s.inst.raiz.visible) continue;
       caixaTmp.setFromObject(s.inst.raiz);
       const d = caixaTmp.distanceToPoint(pTmp);
-      if (d < 0.08 && d < dMelhor) { dMelhor = d; melhor = s; }
+      if (d < s.alcance && d < dMelhor) { dMelhor = d; melhor = s; }
     }
     return melhor;
   }
@@ -138,14 +142,14 @@ const emFoco = new Map<Mao, Seguravel | null>();
 export function segurando(m: Mao): Seguravel | null { for (const s of seguraveis.values()) if (s.mao === m) return s; return null; }
 
 function pegar(s: Seguravel, m: Mao): void {
-  s.estado = 'segurado'; s.mao = m; s.vel.set(0, 0, 0);
+  s.estado = 'segurado'; s.mao = m; s.vel.set(0, 0, 0); s.fixo = false;
   if (entrada.modo === 'vr') {
     // guarda onde o objeto está em relação à mão (pega do jeito que estava, sem "pular")
     m.pose.updateMatrixWorld(true); s.inst.raiz.updateMatrixWorld(true);
     s.offset.copy(m.pose.matrixWorld).invert().multiply(s.inst.raiz.matrixWorld);
   }
   for (const c of s.contorno) c.visible = false;
-  tocar('sfx_segurar', { em: s.inst.raiz });
+  tocar('sfx_segurar', { em: s.inst.raiz }); vibrarTipo(m.lado, 'segurou');
   // quem estava em cima pode cair agora
   for (const o of seguraveis.values()) if (o !== s && o.estado === 'repouso' && o.inst.raiz.position.distanceTo(s.inst.raiz.position) < 0.6) o.estado = 'caindo';
   ganchos.aoPegar(s);
@@ -175,7 +179,7 @@ export function atualizarSeguraveis(dt: number, agora: number, bloqueado: boolea
       if (antes) for (const c of antes.contorno) c.visible = false;
       if (perto) {
         for (const c of perto.contorno) c.visible = true;
-        if (agora - perto.ultimoPlim > 0.6) { tocar('sfx_passar_mao', { em: perto.inst.raiz }); perto.ultimoPlim = agora; }
+        if (agora - perto.ultimoPlim > 0.6) { tocar('sfx_passar_mao', { em: perto.inst.raiz }); perto.ultimoPlim = agora; vibrarTipo(m.lado, 'perto'); }
       }
       emFoco.set(m, perto);
     }
@@ -190,6 +194,7 @@ export function atualizarSeguraveis(dt: number, agora: number, bloqueado: boolea
   for (const s of seguraveis.values()) {
     const r = s.inst.raiz;
     if (!s.ativo) continue;
+    if (s.fixo && s.estado !== 'segurado') continue;
     if (s.estado === 'segurado' && s.mao) {
       if (entrada.modo === 'vr') {
         const mw = new THREE.Matrix4().copy(s.mao.pose.matrixWorld).multiply(s.offset);
@@ -232,9 +237,10 @@ export function atualizarSeguraveis(dt: number, agora: number, bloqueado: boolea
       s.proximaConferida = agora + 0.2;
       if (alturaApoio(s, new THREE.Vector3(r.position.x, pe, r.position.z), 0.02) < pe - 0.01) { s.estado = 'caindo'; s.vel.set(0, 0, 0); continue; }
     }
-    // em repouso no chão: o corpo do jogador empurra (esbarrar)
-    if (pe < 0.3) {
-      const dx = r.position.x - pes.x, dz = r.position.z - pes.z, d = Math.hypot(dx, dz), min = s.raio + 0.22;
+    // em repouso no chão: o corpo do jogador empurra (esbarrar). No VR só andando com o analógico:
+    // ao se abaixar para pegar, a cabeça passa por cima da caixa e antes ela fugia (teste no Quest, 19/10)
+    if (pe < 0.3 && (entrada.modo === 'pc' || jogador.andando)) {
+      const dx = r.position.x - pes.x, dz = r.position.z - pes.z, d = Math.hypot(dx, dz), min = s.raio + 0.12;
       if (d < min && d > 1e-4) {
         r.position.x = pes.x + (dx / d) * min; r.position.z = pes.z + (dz / d) * min;
         const p2 = r.position.clone(); p2.y = pe; empurrarParaFora(p2, s.raio); r.position.x = p2.x; r.position.z = p2.z;

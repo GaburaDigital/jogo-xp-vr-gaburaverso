@@ -114,7 +114,7 @@ function desenharTeste(c: ContextoPaineis): Desenho {
   comecarAlvos();
   const corpo = `<rect x="4" y="100" width="992" height="10" fill="${C.coral}"/>` +
     T(40, 160, 'IR PARA A CENA', { f: 'n', s: 20, w: 700, c: C.aqua, ls: 2 }) +
-    [['Abertura', 'ir:sala_abertura'], ['Ponte', 'ir:ponte_navegacao'], ['Sala central (livre)', 'ir:livre']].map(([t, a], i) => botao(40 + i * 312, 182, 296, 62, t, { tipo: 'suave', s: 24, acao: a })).join('') +
+    [['Abertura', 'ir:sala_abertura'], ['Ponte', 'ir:ponte_navegacao'], ['Treinamento', 'ir:treino_captura'], ['Oficina', 'ir:oficina_energia'], ['Livre', 'ir:livre']].map(([t, a], i) => botao(40 + i * 186, 182, 176, 62, t, { tipo: 'suave', s: 21, acao: a })).join('') +
     botao(40, 270, 450, 66, 'Completar a missão', { ic: 'missao', s: 26, acao: 'completar' }) + botao(510, 270, 450, 66, 'Recomeçar a cena', { tipo: 'suave', s: 26, ic: 'recomecar', icCor: C.aqua, acao: 'recomecar' }) +
     chave(40, 386, 'Medidor de quadros por segundo', c.medidorQps, null, 'qps') + chave(40, 446, 'Atravessar paredes', c.atravessar, null, 'atravessar') +
     R(40, 490, 920, 170, { r: 18, f: C.sup }) + T(64, 530, 'Botões do controle (ao vivo)', { s: 26 }) +

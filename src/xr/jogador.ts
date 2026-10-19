@@ -11,7 +11,8 @@ import { ESTILOS_LUVA, criarLuva, orientarNoGrip, poseRelogioNaLuva, type Luva }
 
 export const ALTURA_OLHOS = 1.6;
 const VELOCIDADE = 1.4;           // m/s, a mesma do Simular VR do editor
-const RAIO = 0.25;
+const RAIO = 0.18;            // paredes (19/10: o corpo diminuiu)
+const RAIO_MOVEIS = 0.12;
 
 export const jogador = {
   rig: new THREE.Group(),
@@ -21,6 +22,8 @@ export const jogador = {
   olhandoRelogio: false,
   relogioPC: false,               // PC: R levanta o pulso
   alturaExtra: 0,                 // VR: m somados à plataforma (jogar sentado)
+  /** Posto de missão: o jogador só anda dentro deste retângulo (treinamento: só para os lados). */
+  limites: null as { x0: number; x1: number; z0: number; z1: number } | null,
 };
 
 /** Altura dos olhos medida pelo óculos (m, dentro da plataforma). */
@@ -157,8 +160,15 @@ export function atualizarJogador(dt: number): void {
     // móveis: só quando anda com o analógico (no VR dá para se debruçar na mesa para pegar algo)
     if (jogador.andando || entrada.modo === 'pc') {
       camera.getWorldPosition(cabeca); cabeca.y = 0.05; tmp.copy(cabeca);
-      if (empurrarParaFora(tmp, 0.2, 'moveis')) { rig.position.x += tmp.x - cabeca.x; rig.position.z += tmp.z - cabeca.z; }
+      if (empurrarParaFora(tmp, RAIO_MOVEIS, 'moveis')) { rig.position.x += tmp.x - cabeca.x; rig.position.z += tmp.z - cabeca.z; }
     }
+  }
+  // ---- posto de missão: só anda dentro do retângulo (também quem anda de verdade na sala) ----
+  const L = jogador.limites;
+  if (L) {
+    camera.getWorldPosition(cabeca);
+    const x = THREE.MathUtils.clamp(cabeca.x, L.x0, L.x1), z = THREE.MathUtils.clamp(cabeca.z, L.z0, L.z1);
+    rig.position.x += x - cabeca.x; rig.position.z += z - cabeca.z;
   }
   // ---- conforto: escurece as bordas enquanto anda ou gira ----
   const alvo = opcoes.bordas && (jogador.andando || girando) ? 0.85 : 0;

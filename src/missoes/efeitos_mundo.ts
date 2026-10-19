@@ -16,8 +16,14 @@ const segurados = new Map<string, Map<string, number>>();
 const PERMANENTES: Record<string, [string, string][]> = {
   acender_faixas_chao: [['faixas_chao', 'acender_ponte']],
   acender_luz_ponte: [['painel_luzes', 'acender_ponte'], ['sala_ponte', 'acender_faixa']],
+  acender_luz_treinamento: [['painel_luzes', 'acender_treinamento'], ['sala_treinamento', 'acender_faixa'], ['faixas_chao', 'acender_treinamento']],
+  acender_luz_oficina: [['painel_luzes', 'acender_oficina'], ['sala_oficina', 'acender_faixa'], ['faixas_chao', 'acender_oficina']],
 };
-const LUZES = new Set(['acender_luz_ponte']);
+const LUZES = new Set(['acender_luz_ponte', 'acender_luz_treinamento', 'acender_luz_oficina']);
+/** Missão completa → LED da missão no relógio. */
+const LED_DA_MISSAO: Record<string, 'ponte' | 'treinamento' | 'oficina'> = {
+  missao_completa_ponte: 'ponte', missao_completa_treinamento: 'treinamento', missao_completa_oficina: 'oficina',
+};
 
 function segurar(id: string, clipe: string, desde: number): void {
   if (!instancias.get(id)?.clipes.has(clipe)) return;
@@ -32,7 +38,7 @@ export function aplicarEvento(nome: string, instantaneo = false): void {
     // três pulsos no controle esquerdo, como um relógio vibrando
     for (let i = 0; i < 3; i++) setTimeout(() => vibrar('esq', 0.7, 140), i * 320);
   }
-  if (nome === 'missao_completa_ponte') ledRelogio('ponte', true);
+  if (LED_DA_MISSAO[nome]) ledRelogio(LED_DA_MISSAO[nome], true);
   for (const [id, clipe] of PERMANENTES[nome] ?? []) segurar(id, clipe, agora);
   if (LUZES.has(nome)) acenderLuzDoEvento(nome, agora, instantaneo);
   if ((PERMANENTES[nome] || nome.startsWith('missao_completa')) && !progresso.eventos.includes(nome)) { progresso.eventos.push(nome); salvarProgresso(); }
@@ -46,7 +52,7 @@ export function desfazerEventos(nomes: string[]): void {
   for (const nome of nomes) {
     for (const [id, clipe] of PERMANENTES[nome] ?? []) segurados.get(id)?.delete(clipe);
     if (LUZES.has(nome)) apagarLuzDoEvento(nome);
-    if (nome === 'missao_completa_ponte') ledRelogio('ponte', false);
+    if (LED_DA_MISSAO[nome]) ledRelogio(LED_DA_MISSAO[nome], false);
   }
   progresso.eventos = progresso.eventos.filter((e) => !nomes.includes(e)); salvarProgresso();
 }

@@ -108,8 +108,22 @@ export function lerVR(dt: number): void {
 
 /** Vibração curta no controle (o relógio vibrando). */
 export function vibrar(lado: Lado, forca = 0.6, ms = 120): void {
+  if (entrada.modo !== 'vr') return;
   const gp = entrada.maos[lado].fonte?.gamepad as (Gamepad & { hapticActuators?: { pulse: (v: number, d: number) => Promise<boolean> }[] }) | undefined;
   try { void gp?.hapticActuators?.[0]?.pulse(forca, ms); } catch { /* sem vibração */ }
+}
+
+/** Tabela de vibração aprovada para o teste (19/10): sutil no toque, forte só no tiro. [força 0–1, ms] */
+export const VIBRACAO = {
+  perto: [0.12, 18],      // a mão chegou perto de algo que dá para pegar ou apertar (uma vez)
+  segurou: [0.3, 35],
+  encaixe: [0.5, 60],     // peça encaixou, botão apertou
+  personagem: [0.2, 30],  // a mão tocou num personagem (no máximo a cada meio segundo)
+  tiro: [0.9, 110],       // arma de captura
+} as const;
+export function vibrarTipo(lado: Lado | null | undefined, tipo: keyof typeof VIBRACAO): void {
+  if (!lado) return;
+  const [f, ms] = VIBRACAO[tipo]; vibrar(lado, f, ms);
 }
 
 // ---------- PC ----------

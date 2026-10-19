@@ -1,7 +1,7 @@
 {
   "name": "Experiência VR no GaburaVERSO",
-  "short_name": "Nave Gabura",
-  "description": "A Nave do Gaburaverso: experiência em Realidade Virtual para Meta Quest 3S.",
+  "short_name": "Experiência VR no GaburaVERSO",
+  "description": "Experiência VR no GaburaVERSO: jogo em Realidade Virtual para Meta Quest 3S.",
   "lang": "pt-BR",
   "start_url": "./",
   "scope": "./",
