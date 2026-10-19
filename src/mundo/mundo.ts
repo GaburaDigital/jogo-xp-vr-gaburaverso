@@ -26,7 +26,7 @@ export function gltf(nome: string): Promise<GLTF | null> {
 }
 
 /** Caixa de parede vista de cima: centro, meia-largura, meia-espessura e giro (rad). */
-export interface Parede { c: THREE.Vector3; hx: number; hz: number; rot: number; porta?: string }
+export interface Parede { c: THREE.Vector3; hx: number; hz: number; rot: number; porta?: string; topo?: number; movel?: boolean }
 
 /** Um osso da boca (do extras.gabura_fala do GLB). */
 interface OssoBoca {
@@ -252,13 +252,16 @@ export function posicaoDe(id: string): THREE.Vector3 | null {
 // ---------- colisão do jogador e dos objetos com as paredes (igual ao Simular VR do editor) ----------
 export const portasAbertas = new Set<string>();
 /** Tira um círculo (centro p, raio r) de dentro das caixas das paredes. Devolve true se encostou. */
-export function empurrarParaFora(p: THREE.Vector3, raio: number): boolean {
+export function empurrarParaFora(p: THREE.Vector3, raio: number, filtro: 'tudo' | 'paredes' | 'moveis' = 'tudo'): boolean {
   let encostou = false;
   for (let passada = 0; passada < 2; passada++) {
     for (const inst of instancias.values()) {
       if (!inst.paredes.length || !inst.raiz.visible) continue;
       for (const w of inst.paredes) {
         if (w.porta && portasAbertas.has(w.porta)) continue;
+        if (filtro === 'paredes' && w.movel) continue;
+        if (filtro === 'moveis' && !w.movel) continue;
+        if (w.topo !== undefined && p.y > w.topo - 0.03) continue; // está em cima do móvel (objeto na mesa)
         if (Math.abs(p.x - w.c.x) > w.hx + w.hz + raio + 0.5 && Math.abs(p.z - w.c.z) > w.hx + w.hz + raio + 0.5) continue;
         const co = Math.cos(w.rot), si = Math.sin(w.rot);
         const dx = p.x - w.c.x, dz = p.z - w.c.z;
@@ -281,6 +284,37 @@ export function empurrarParaFora(p: THREE.Vector3, raio: number): boolean {
     }
   }
   return encostou;
+}
+
+/** Móveis sem caixa de colisão no GLB: o jogo cria uma pelo tamanho deles (rodada 5: "colisão em todos os móveis").
+ *  A caixa segue o giro do móvel e guarda a altura do tampo (o que está em cima não é empurrado). */
+export function criarColisoresDeMoveis(eMovel: (inst: Instancia) => boolean): string[] {
+  const feitos: string[] = [];
+  for (const inst of instancias.values()) {
+    if (!inst.obj || inst.paredes.length || !eMovel(inst)) continue;
+    const r = inst.raiz, q = r.quaternion.clone();
+    // tamanho no espaço do próprio móvel (sem o giro)
+    r.quaternion.identity(); r.updateMatrixWorld(true);
+    // só as partes de verdade: marcas no chão (o círculo do "posto" na frente do console) não viram parede
+    // (vértice por vértice: marcas no chão, como o círculo do "posto" na frente do console, ficam de fora)
+    const b = new THREE.Box3(), v = new THREE.Vector3();
+    r.updateMatrixWorld(true);
+    inst.obj.traverse((o) => {
+      const pos = (o as THREE.Mesh).isMesh ? ((o as THREE.Mesh).geometry as THREE.BufferGeometry).getAttribute('position') : null;
+      if (!pos) return;
+      for (let i = 0; i < pos.count; i++) { v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld); if (v.y > 0.08) b.expandByPoint(v); }
+    });
+    const todo = new THREE.Box3().setFromObject(inst.obj);   // altura: o objeto inteiro (pés da mesa incluídos)
+    r.quaternion.copy(q); r.updateMatrixWorld(true);
+    if (b.isEmpty()) continue;
+    const t = b.getSize(new THREE.Vector3());
+    if (todo.max.y - todo.min.y < 0.25 || todo.min.y > 0.4 || Math.max(t.x, t.z) > 4.5) continue; // baixo demais, pendurado ou grande demais (não é móvel)
+    const centro = b.getCenter(new THREE.Vector3()).sub(r.position).applyQuaternion(q).add(r.position);
+    const giro = new THREE.Euler().setFromQuaternion(q, 'YXZ').y;
+    inst.paredes.push({ c: new THREE.Vector3(centro.x, 0, centro.z), hx: Math.max(0.05, t.x / 2 - 0.02), hz: Math.max(0.05, t.z / 2 - 0.02), rot: giro, topo: b.max.y, movel: true });
+    feitos.push(inst.id);
+  }
+  return feitos;
 }
 
 // ---------- seta holográfica (igual ao editor) ----------

@@ -24,6 +24,8 @@ export const ICONES: Record<string, string> = {
   teste: 'M14.5 4.5a4 4 0 0 0 5 5L11 18a2.1 2.1 0 0 1-3-3l8.5-8.5a4 4 0 0 0-2-2z',
   missao: 'M12 3c3.5 2 4.6 6 3.6 10.5L12 16.5l-3.6-3C7.4 9 8.5 5 12 3zM9 16l-2 4.5M15 16l2 4.5M12 8.5v2',
   creditos: 'M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6L12 16.6l-5.4 2.9 1.2-6-4.5-4.2 6.1-.7z',
+  do_inicio: 'M6 5v14M19 5l-10 7 10 7z',
+  altura: 'M9 3.5a1.8 1.8 0 1 0 .01 0M9 8v6M6 10h6M9 14l-2 6M9 14l2 6M18 4v16M15.5 6.5L18 4l2.5 2.5M15.5 17.5L18 20l2.5-2.5',
 };
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -121,7 +123,7 @@ export function comoJogarVR(): string {
   const bt = (x: number, y: number, r: number, t: string, on: boolean) => `<polygon points="${[...Array(8)].map((_, i) => { const a = i * Math.PI / 4 + Math.PI / 8; return `${(x + Math.cos(a) * r).toFixed(1)},${(y + Math.sin(a) * r).toFixed(1)}`; }).join(' ')}" fill="${on ? C.lima : C.sup}" stroke="${on ? C.lima : C.linha}" stroke-width="2.5"/>` + (t ? T(x, y + r * 0.42, t, { f: 'n', s: r * 1.2, w: 700, a: 'middle', c: on ? C.fundo : C.texto2 }) : '');
   return painel(1280, 760, 'Como jogar · Meta Quest', '', controleQuest(E[0], E[1], true) + controleQuest(D[0], D[1], false) +
     bt(E[0] + 115, E[1] + 105, 34, '', true) + bt(E[0] + 66, E[1] + 196, 25, 'X', true) + bt(E[0] + 134, E[1] + 222, 25, 'Y', true) + bt(E[0] + 165, E[1] + 160, 13, '≡', true) +
-    bt(D[0] + 115, D[1] + 105, 34, '', true) + bt(D[0] + 164, D[1] + 196, 25, 'A', false) + bt(D[0] + 96, D[1] + 222, 25, 'B', false) + bt(D[0] + 60, D[1] + 160, 13, '', false) +
+    bt(D[0] + 115, D[1] + 105, 34, '', true) + bt(D[0] + 164, D[1] + 196, 25, 'A', true) + bt(D[0] + 96, D[1] + 222, 25, 'B', false) + bt(D[0] + 60, D[1] + 160, 13, '', false) +
     `<rect x="${E[0] + 148}" y="${E[1] + 12}" width="62" height="14" rx="7" fill="${C.lima}"/><rect x="${E[0] + 172}" y="${E[1] + 268}" width="16" height="70" rx="8" fill="${C.lima}"/>` +
     `<rect x="${D[0] + 20}" y="${D[1] + 12}" width="62" height="14" rx="7" fill="${C.lima}"/><rect x="${D[0] + 42}" y="${D[1] + 268}" width="16" height="70" rx="8" fill="${C.lima}"/>` +
     T(E[0] + 115, E[1] + 470, 'ESQUERDO', { f: 'n', s: 20, w: 700, a: 'middle', c: C.aqua, ls: 2 }) + T(D[0] + 115, D[1] + 470, 'DIREITO', { f: 'n', s: 20, w: 700, a: 'middle', c: C.aqua, ls: 2 }) +
@@ -132,7 +134,7 @@ export function comoJogarVR(): string {
     rotuloPts([[E[0] + 180, E[1] + 300], [E[0] + 180, 545], [260, 545]], 'Lateral (grip)', 'segurar / soltar', 'esq') +
     rotuloPts([[D[0] + 50, D[1] + 19], [1010, 150]], 'Gatilho', 'usar, apertar, girar peça', 'dir') +
     rotuloPts([[D[0] + 115, D[1] + 105], [1010, 245]], 'Analógico', 'girar o corpo', 'dir') +
-    rotuloPts([[D[0] + 189, D[1] + 196], [1010, 340]], 'A e B', 'não usados aqui', 'dir', false) +
+    rotuloPts([[D[0] + 189, D[1] + 196], [1010, 340]], 'A', 'virar a peça (tangram)', 'dir', true) +
     rotuloPts([[D[0] + 50, D[1] + 300], [D[0] + 50, 545], [1010, 545]], 'Lateral (grip)', 'segurar / soltar', 'dir') +
     R(40, 652, 1200, 84, { r: 18, f: C.sup }) + icone('relogio', 64, 674, 40, C.aqua) + T(120, 706, 'Levante o pulso esquerdo como quem olha as horas: o relógio acende.', { f: 'n', s: 24, w: 700 }) +
     T(1210, 706, 'Botão Meta: pausa', { f: 'n', s: 21, c: C.texto2, a: 'end' }), { ic: 'controle' });
@@ -142,7 +144,7 @@ export function comoJogarPC(): string {
   const y0 = 170, mx = 840, my = 160;
   return painel(1280, 760, 'Como jogar · computador', 'versão adaptada', selo(40, 114, 'adaptação · o jogo foi feito para VR', C.aqua) +
     tecla(60, y0, 84, 'Esc', true) +
-    tecla(80, y0 + 100, 84, 'Q', true) + tecla(174, y0 + 100, 84, 'W', true) + tecla(268, y0 + 100, 84, 'E', false) + tecla(362, y0 + 100, 84, 'R', true) +
+    tecla(80, y0 + 100, 84, 'Q', true) + tecla(174, y0 + 100, 84, 'W', true) + tecla(268, y0 + 100, 84, 'E', true) + tecla(362, y0 + 100, 84, 'R', true) +
     tecla(104, y0 + 174, 84, 'A', true) + tecla(198, y0 + 174, 84, 'S', true) + tecla(292, y0 + 174, 84, 'D', true) +
     tecla(150, y0 + 248, 260, 'Espaço', true) +
     rotuloPts([[144, y0 + 32], [490, y0 + 32]], 'Esc', 'menu (pausa)') +
@@ -155,7 +157,7 @@ export function comoJogarPC(): string {
     `<rect x="${mx + 60}" y="${my + 30}" width="20" height="50" rx="10" fill="${C.fundo}" stroke="${C.lima}" stroke-width="3"/>` +
     rotuloPts([[mx + 30, my + 70], [1010, 220]], 'Clique esquerdo', 'usar, apertar, atirar') +
     rotuloPts([[mx + 115, my + 90], [1010, 305]], 'Clique direito', 'segurar / soltar') +
-    rotuloPts([[mx + 70, my + 55], [mx + 70, my - 22], [1010, my - 22]], 'Roda', 'girar a peça') +
+    rotuloPts([[mx + 70, my + 55], [mx + 70, my - 22], [1010, my - 22]], 'Roda ou E', 'girar a peça · F vira') +
     rotuloPts([[mx + 70, my + 250], [1010, 420]], 'Mover o mouse', 'olhar em volta') +
     R(40, 652, 1200, 84, { r: 18, f: C.sup }) + icone('pc', 64, 674, 40, C.aqua) + T(120, 706, 'Nos quebra-cabeças a câmera para no ponto certo e o cursor vira a sua mão.', { f: 'n', s: 24, w: 700 }), { ic: 'controle' });
 }

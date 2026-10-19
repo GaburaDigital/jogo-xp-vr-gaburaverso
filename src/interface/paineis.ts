@@ -9,7 +9,7 @@ import { opcoes } from '../nucleo/config';
 import { entrada } from '../xr/entrada';
 import { camera, cena3d } from '../mundo/mundo';
 
-export type TipoPainel = 'pausa' | 'opcoes' | 'como_jogar' | 'missao' | 'teste' | 'senha';
+export type TipoPainel = 'pausa' | 'opcoes' | 'como_jogar' | 'missao' | 'teste' | 'senha' | 'confirmar';
 
 export interface ContextoPaineis {
   vr: boolean;
@@ -21,6 +21,10 @@ export interface ContextoPaineis {
   medidorQps: boolean;
   atravessar: boolean;
   versao: string;
+  confirmar: 'jogo' | 'missao';  // o que o painel de confirmação vai apagar
+  nomeReiniciar: string;         // nome da missão que "Reiniciar missão" vai reiniciar
+  contagemAltura: number;        // 3, 2, 1 enquanto ajusta a altura (0 = parado)
+  botoesBrutos: string;          // números dos botões apertados (diagnóstico do ≡)
 }
 
 export interface Desenho { w: number; h: number; corpo: string; alvos: Alvo[]; }
@@ -30,16 +34,33 @@ export interface Desenho { w: number; h: number; corpo: string; alvos: Alvo[]; }
 // =====================================================================
 function desenharPausa(c: ContextoPaineis): Desenho {
   comecarAlvos();
-  const h = c.modoTeste ? 790 : 700;
-  const itens: [string, string, string, boolean][] = [['jogar', 'Continuar', 'continuar', true], ['ajustes', 'Opções', 'abrir:opcoes', false], ['controle', 'Como jogar', 'abrir:como_jogar', false],
-    ['relogio', 'Ver missão', 'abrir:missao', false], ['recomecar', 'Recomeçar', 'recomecar', false], ['sair', c.vr ? 'Sair do VR' : 'Sair', 'sair', false]];
-  let corpo = itens.map(([ic, t, acao, ac], i) => {
-    const x = 70 + (i % 3) * 290, y = 132 + Math.floor(i / 3) * 270;
-    pegarAlvos().push({ acao, x, y, w: 270, h: 250 });
-    return R(x, y, 270, 250, { r: 26, f: ac ? C.lima : C.sup, st: ac ? C.lima : C.linha, sw: 2.5 }) + icone(ic, x + 85, y + 40, 100, ac ? C.fundo : C.aqua) + T(x + 135, y + 210, t, { s: 32, w: 700, a: 'middle', c: ac ? C.fundo : C.texto });
+  // grade 4 × 2 aprovada na rodada 4 (Continuar ocupa duas casas)
+  const W = 1240, h = c.modoTeste ? 790 : 700;
+  const itens: [string, string, string, number][] = [['jogar', 'Continuar', 'continuar', 2], ['ajustes', 'Opções', 'abrir:opcoes', 1], ['controle', 'Como jogar', 'abrir:como_jogar', 1],
+    ['relogio', 'Ver missão', 'abrir:missao', 1], ['recomecar', 'Reiniciar missão', 'confirmar:missao', 1], ['do_inicio', 'Recomeçar jogo', 'confirmar:jogo', 1], ['sair', c.vr ? 'Sair do VR' : 'Sair', 'sair', 1]];
+  let col = 0;
+  let corpo = itens.map(([ic, t, acao, larg]) => {
+    const x = 60 + (col % 4) * 284, y = 132 + Math.floor(col / 4) * 272, w = 260 + (larg - 1) * 284; col += larg;
+    const ac = acao === 'continuar';
+    pegarAlvos().push({ acao, x, y, w, h: 250 });
+    return R(x, y, w, 250, { r: 26, f: ac ? C.lima : C.sup, st: ac ? C.lima : C.linha, sw: 2.5 }) + icone(ic, x + w / 2 - 46, y + 34, 92, ac ? C.fundo : ic === 'do_inicio' ? C.coral : C.aqua) +
+      T(x + w / 2, y + 216, t, { s: 30, w: 700, a: 'middle', c: ac ? C.fundo : C.texto });
   }).join('');
-  if (c.modoTeste) corpo += botao(70, 690, 850, 70, 'Modo de teste', { tipo: 'suave', s: 26, ic: 'teste', icCor: C.coral, acao: 'abrir:teste' });
-  return { w: 1000, h, corpo: painel(1000, h, 'Pausado', 'Missão: ' + c.missao.nome, corpo, { ic: 'pausar' }), alvos: pegarAlvos() };
+  if (c.modoTeste) corpo += botao(60, 690, 1120, 70, 'Modo de teste', { tipo: 'suave', s: 26, ic: 'teste', icCor: C.coral, acao: 'abrir:teste' });
+  return { w: W, h, corpo: painel(W, h, 'Pausado', 'Missão: ' + c.missao.nome, corpo, { ic: 'pausar' }), alvos: pegarAlvos() };
+}
+
+function desenharConfirmar(c: ContextoPaineis): Desenho {
+  comecarAlvos();
+  const jogo = c.confirmar === 'jogo';
+  const titulo = jogo ? 'Recomeçar o jogo?' : 'Reiniciar a missão?';
+  const linhas = jogo ? ['Você volta para a abertura. As luzes acesas e as missões', 'feitas são apagadas.']
+    : [`A missão “${c.nomeReiniciar}” volta para o começo.`, 'O que você fez nela é desfeito.'];
+  pegarAlvos().push({ acao: 'confirmar_sim', x: 40, y: 270, w: 440, h: 92 });
+  const corpo = T(40, 170, linhas[0], { f: 'n', s: 28 }) + T(40, 210, linhas[1], { f: 'n', s: 28 }) +
+    R(40, 270, 440, 92, { r: 46, f: C.coral, st: C.coral, sw: 2.5 }) + icone(jogo ? 'do_inicio' : 'recomecar', 92, 294, 44, C.fundo) + T(150, 330, jogo ? 'Sim, recomeçar' : 'Sim, reiniciar', { s: 34, c: C.fundo }) +
+    botao(520, 270, 440, 92, 'Cancelar', { s: 34, ic: 'voltar', acao: 'voltar' });
+  return { w: 1000, h: 410, corpo: painel(1000, 410, titulo, '', corpo, { ic: jogo ? 'do_inicio' : 'recomecar' }), alvos: pegarAlvos() };
 }
 
 function desenharOpcoes(c: ContextoPaineis): Desenho {
@@ -47,20 +68,25 @@ function desenharOpcoes(c: ContextoPaineis): Desenho {
   const movimento = c.vr
     ? segmentos(50, 430, 'Giro', ['Passos', 'Contínuo'], opcoes.giro === 'passos' ? 0 : 1, 'giro', 'giro') +
       segmentos(50, 494, 'Tamanho do passo', ['30°', '45°'], opcoes.passoGiro === 30 ? 0 : 1, null, 'passo') +
-      chave(50, 558, 'Escurecer as bordas ao andar', opcoes.bordas, 'conforto', 'bordas')
+      chave(50, 558, 'Escurecer as bordas ao andar', opcoes.bordas, 'conforto', 'bordas') +
+      segmentos(50, 622, 'Altura', ['Em pé', 'Sentado'], opcoes.posicao === 'sentado' ? 1 : 0, 'altura', 'posicao') +
+      botao(600, 656, 350, 52, c.contagemAltura ? `Olhe para frente… ${c.contagemAltura}` : 'Ajustar altura agora', { tipo: 'suave', s: 22, ic: 'altura', icCor: C.aqua, acao: 'ajustar_altura' })
     : deslizante(50, 430, 900, 'Mouse', Math.min(1, opcoes.sensibilidadeMouse / 2), 'pc', 'sensibilidade') +
       chave(50, 520, 'Escurecer as bordas ao andar', opcoes.bordas, 'conforto', 'bordas');
   const corpo = T(40, 150, 'SOM', { f: 'n', s: 20, w: 700, c: C.aqua, ls: 2 }) +
     deslizante(50, 196, 900, 'Música', opcoes.musica, 'musica', 'musica') + deslizante(50, 256, 900, 'Efeitos', opcoes.efeitos, 'efeitos', 'efeitos') + deslizante(50, 316, 900, 'Vozes', opcoes.vozes, 'vozes', 'vozes') +
     T(40, 384, 'MOVIMENTO', { f: 'n', s: 20, w: 700, c: C.aqua, ls: 2 }) + movimento +
-    T(40, 626, 'IMAGEM', { f: 'n', s: 20, w: 700, c: C.aqua, ls: 2 }) +
-    chave(50, 672, 'Reduzir efeitos de iluminação', opcoes.reduzirLuz, 'luz', 'reduzir_luz') + chave(50, 736, 'Legendas', opcoes.legendas, 'legenda', 'legendas') +
-    segmentos(50, 800, 'Tamanho da legenda', ['P', 'M', 'G'], ['P', 'M', 'G'].indexOf(opcoes.tamanhoLegenda), null, 'tamanho_legenda') +
-    `<line x1="40" y1="852" x2="960" y2="852" stroke="${C.linha}" stroke-width="2"/>` +
-    icone('teste', 50, 884, 30, C.texto2) + T(96, 908, 'Modo de teste', { f: 'n', s: 24, w: 700, c: C.texto2 }) +
-    botao(700, 876, 250, 52, c.modoTeste ? 'Desligar' : 'Ativar…', { tipo: 'suave', s: 22, acao: c.modoTeste ? 'teste_desligar' : 'abrir:senha' }) +
-    botao(780, 22, 180, 60, 'Voltar', { tipo: 'contorno', s: 24, ic: 'voltar', acao: 'voltar' });
-  return { w: 1000, h: 960, corpo: painel(1000, 960, 'Opções', '', corpo, { ic: 'ajustes' }), alvos: pegarAlvos() };
+    imagem(c.vr ? 744 : 626) + botao(780, 22, 180, 60, 'Voltar', { tipo: 'contorno', s: 24, ic: 'voltar', acao: 'voltar' });
+  const h = c.vr ? 1080 : 960;
+  return { w: 1000, h, corpo: painel(1000, h, 'Opções', '', corpo, { ic: 'ajustes' }), alvos: pegarAlvos() };
+  function imagem(y: number): string {
+    return T(40, y, 'IMAGEM', { f: 'n', s: 20, w: 700, c: C.aqua, ls: 2 }) +
+      chave(50, y + 46, 'Reduzir efeitos de iluminação', opcoes.reduzirLuz, 'luz', 'reduzir_luz') + chave(50, y + 110, 'Legendas', opcoes.legendas, 'legenda', 'legendas') +
+      segmentos(50, y + 174, 'Tamanho da legenda', ['P', 'M', 'G'], ['P', 'M', 'G'].indexOf(opcoes.tamanhoLegenda), null, 'tamanho_legenda') +
+      `<line x1="40" y1="${y + 226}" x2="960" y2="${y + 226}" stroke="${C.linha}" stroke-width="2"/>` +
+      icone('teste', 50, y + 258, 30, C.texto2) + T(96, y + 282, 'Modo de teste', { f: 'n', s: 24, w: 700, c: C.texto2 }) +
+      botao(700, y + 250, 250, 52, c.modoTeste ? 'Desligar' : 'Ativar…', { tipo: 'suave', s: 22, acao: c.modoTeste ? 'teste_desligar' : 'abrir:senha' });
+  }
 }
 
 function desenharComoJogar(c: ContextoPaineis): Desenho {
@@ -91,13 +117,13 @@ function desenharTeste(c: ContextoPaineis): Desenho {
     [['Abertura', 'ir:sala_abertura'], ['Ponte', 'ir:ponte_navegacao'], ['Sala central (livre)', 'ir:livre']].map(([t, a], i) => botao(40 + i * 312, 182, 296, 62, t, { tipo: 'suave', s: 24, acao: a })).join('') +
     botao(40, 270, 450, 66, 'Completar a missão', { ic: 'missao', s: 26, acao: 'completar' }) + botao(510, 270, 450, 66, 'Recomeçar a cena', { tipo: 'suave', s: 26, ic: 'recomecar', icCor: C.aqua, acao: 'recomecar' }) +
     chave(40, 386, 'Medidor de quadros por segundo', c.medidorQps, null, 'qps') + chave(40, 446, 'Atravessar paredes', c.atravessar, null, 'atravessar') +
-    R(40, 490, 920, 160, { r: 18, f: C.sup }) + T(64, 530, 'Botões do controle (ao vivo)', { s: 26 }) +
-    ['≡', 'Y', 'X', 'gatilho E', 'grip E', 'A', 'B', 'gatilho D'].map((k, i) => {
+    R(40, 490, 920, 170, { r: 18, f: C.sup }) + T(64, 530, 'Botões do controle (ao vivo)', { s: 26 }) +
+    ['≡', 'Y', 'X', 'gatilho E', 'grip E', 'A', 'B', 'gatilho D', 'grip D'].map((k, i) => {
       const on = c.botoesVivos.has(k);
-      return R(64 + i * 110, 556, 100, 64, { r: 14, f: on ? C.lima : C.sup2, st: on ? C.lima : C.linha }) + T(114 + i * 110, 596, k, { f: 'n', s: 20, w: 700, a: 'middle', c: on ? C.fundo : C.texto2 });
-    }).join('') +
+      return R(56 + i * 99, 556, 92, 64, { r: 14, f: on ? C.lima : C.sup2, st: on ? C.lima : C.linha }) + T(102 + i * 99, 596, k, { f: 'n', s: 18, w: 700, a: 'middle', c: on ? C.fundo : C.texto2 });
+    }).join('') + T(64, 642, 'números: ' + (c.botoesBrutos || '—'), { f: 'n', s: 18, c: C.texto2 }) +
     botao(780, 22, 180, 60, 'Voltar', { tipo: 'contorno', s: 24, ic: 'voltar', acao: 'voltar' }) +
-    T(40, 700, 'versão ' + c.versao, { f: 'n', s: 18, c: C.texto2 });
+    T(40, 702, 'versão ' + c.versao, { f: 'n', s: 18, c: C.texto2 });
   return { w: 1000, h: 730, corpo: painel(1000, 730, 'Modo de teste', '', corpo, { ic: 'teste' }), alvos: pegarAlvos() };
 }
 
@@ -115,7 +141,7 @@ function desenharSenha(c: ContextoPaineis): Desenho {
 }
 
 const DESENHOS: Record<TipoPainel, (c: ContextoPaineis) => Desenho> = {
-  pausa: desenharPausa, opcoes: desenharOpcoes, como_jogar: desenharComoJogar, missao: desenharMissao, teste: desenharTeste, senha: desenharSenha,
+  pausa: desenharPausa, opcoes: desenharOpcoes, como_jogar: desenharComoJogar, missao: desenharMissao, teste: desenharTeste, senha: desenharSenha, confirmar: desenharConfirmar,
 };
 
 /** O desenho de um painel (a tela inicial do navegador usa os mesmos desenhos). */

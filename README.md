@@ -27,18 +27,21 @@ Jogo em **Realidade Virtual** para o **Meta Quest 3S**, feito com WebXR. O jogad
 | Gatilho | usar, apertar, girar a peça 45° | Clique esquerdo | usar, apertar |
 | X ou levantar o pulso | relógio | R | relógio |
 | Y | menu (pausa) | Esc | menu (pausa) |
-| | | Roda ou clique direito | girar a peça do tangram |
+| A | virar a peça do tangram | E, roda ou clique direito | girar a peça do tangram |
+| | | F | virar a peça do tangram |
 | | | Espaço | pular a fala |
 
 O botão ≡ do controle esquerdo não chega ao navegador no WebXR; por isso o menu abre no **Y**.
 
-## O que já dá para jogar (entrega 1)
+## O que já dá para jogar (entrega 1.1)
 
 - Tela inicial, aviso da versão PC, menu de pausa, Opções (Música, Efeitos, Vozes, giro, conforto, iluminação, legendas), Como jogar e Missão.
 - **Abertura** completa na sala central: relógio vibrando, janela com o título, caixas para pegar, jogar, empurrar e empilhar.
 - **Ponte**: achar o cyberdeck da Gabura, encaixar no console e montar o foguete do tangram. A luz da ponte acende no fim.
 - Todas as portas funcionam: dá para explorar a nave inteira. As outras missões chegam nas próximas entregas.
-- O progresso fica salvo no navegador.
+- O progresso fica salvo no navegador. Com jogo salvo, a tela inicial oferece **Continuar de onde parou** ou **Jogar do início**; no menu de pausa há **Reiniciar missão** e **Recomeçar jogo** (com confirmação).
+- Mãos: luvas de blocos (gatilho dobra o indicador, grip fecha a mão) com o relógio da Gabu_IA no pulso esquerdo.
+- Opções: altura **Em pé / Sentado** e **Ajustar altura agora** (para jogar sentado).
 
 ## Desenvolvimento
 

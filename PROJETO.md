@@ -25,11 +25,15 @@ O jogador acorda na nave do Gaburaverso. A Gabu_IA, pelo relógio do pulso, guia
 - PC: tela inicial com "Jogar no VR" grande e "Jogar na versão adaptada para PC" menor; o Quest lembra que entrou no VR, o PC não lembra.
 - Legendas ligadas (P/M/G); bordas de conforto desligadas por padrão.
 - Modo de teste: link na tela inicial e em Opções, com senha (não aparece no jogo).
-- Tangram: peça encaixa ao chegar bem perto (4,5 cm) com o giro certo; gatilho gira 45° no VR; roda ou clique direito no PC, com a câmera parada sobre o console.
+- Tangram (rodada 5): vale qualquer peça com a mesma forma do encaixe (peças iguais trocam de lugar, giros simétricos, paralelogramo virado se couber); atração de 9 cm com sombra Lima; a peça não gira sozinha. VR: gatilho gira 45°, A vira. PC: E/roda/clique direito gira, F vira.
+- Mãos: luvas de blocos chanfradas (Luva Luar), padrão dos jogos Gabura; cores trocáveis em `src/xr/luvas.ts` (ESTILOS_LUVA). Relógio aprovado no pulso esquerdo, abaixo da palma, pulseira atravessada.
+- Recomeços: "Reiniciar missão" = missão em andamento, senão a última concluída, senão o jogo; "Recomeçar jogo" volta à abertura e apaga o progresso. Sempre com confirmação (botão Coral).
+- Ícone: planeta-cubo original com arco Aqua e selo VR (B1).
+- Colisão: todos os móveis seguram o jogador (no VR só ao andar com o analógico, para dar para se debruçar na mesa).
 
 ## Entregas
 
-1. Base, interface, abertura e ponte (esta).
+1. Base, interface, abertura e ponte. 1.1: luvas, recomeços, altura, tangram novo, colisão dos móveis, ícone.
 2. Treinamento (captura dos clones).
 3. Oficina (circuito).
 4. Portal, túnel e créditos.

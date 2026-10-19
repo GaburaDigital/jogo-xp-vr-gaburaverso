@@ -23,7 +23,9 @@ export interface Seguravel {
   ultimoPlim: number;
   ultimoImpacto: number;
   inicial: { pos: THREE.Vector3; quat: THREE.Quaternion; visivel: boolean };
-  inclinacao: THREE.Quaternion; // "de pé" deste objeto (ex.: o cyberdeck fica deitado): o giro inicial sem a parte vertical
+  inclinacao: THREE.Quaternion;
+  base: number;                // da origem do objeto até o ponto mais baixo dele (cyberdeck deitado: a origem fica no meio)
+  proximaConferida: number;    // quando conferir de novo se ainda tem apoio embaixo // "de pé" deste objeto (ex.: o cyberdeck fica deitado): o giro inicial sem a parte vertical
   ativo: boolean;              // pode pegar agora?
 }
 
@@ -62,7 +64,7 @@ export function registrarSeguravel(id: string, somImpacto: string | null = 'sfx_
     id, inst, estado: 'repouso', vel: new THREE.Vector3(), raio: Math.max(0.06, Math.min(t.x, t.z) / 2), altura: t.y, mao: null,
     offset: new THREE.Matrix4(), contorno: criarContorno(inst.obj), somImpacto, ultimoPlim: -9, ultimoImpacto: -9,
     inicial: { pos: inst.raiz.position.clone(), quat: inst.raiz.quaternion.clone(), visivel: inst.raiz.visible }, ativo: true,
-    inclinacao: new THREE.Quaternion(),
+    inclinacao: new THREE.Quaternion(), base: Math.max(0, inst.raiz.position.y - caixa.min.y), proximaConferida: 0,
   };
   const e0 = new THREE.Euler().setFromQuaternion(inst.raiz.quaternion, 'YXZ');
   s.inclinacao.setFromAxisAngle(new THREE.Vector3(0, 1, 0), -e0.y).multiply(inst.raiz.quaternion);
@@ -89,13 +91,20 @@ export function definirApoios(ignorar: (id: string) => boolean): void {
     inst.obj.traverse((o) => { if ((o as THREE.Mesh).isMesh && !o.userData.casco && !/teto|casco|vidro|luzes|janela_portal|redemoinho/.test(o.name) && !o.userData.contorno) estaticos.push(o); });
   }
 }
-function alturaApoio(s: Seguravel, p: THREE.Vector3): number {
+function alturaApoio(s: Seguravel, p: THREE.Vector3, folga = 0.12): number {
   raioBaixo.set(new THREE.Vector3(p.x, p.y + 0.4, p.z), new THREE.Vector3(0, -1, 0));
   raioBaixo.far = 6;
   const outros: THREE.Object3D[] = [];
   for (const o of seguraveis.values()) if (o !== s && o.estado !== 'segurado' && o.inst.raiz.visible && o.inst.obj) outros.push(o.inst.obj);
   const hits = raioBaixo.intersectObjects([...estaticos, ...outros], true).filter((h) => !h.object.userData.contorno && h.object.visible && (!h.face || h.face.normal.y > -0.2));
-  for (const h of hits) if (h.point.y <= p.y + 0.12) return h.point.y;
+  for (const h of hits) {
+    if (h.point.y > p.y + folga) continue;
+    // outro objeto solto só apoia se estiver mais embaixo (o que está em cima de mim não me segura)
+    let o: THREE.Object3D | null = h.object; while (o && !seguraveis.has(o.userData.id)) o = o.parent;
+    const outro = o ? seguraveis.get(o.userData.id) : undefined;
+    if (outro && outro.inst.raiz.position.y - outro.base > p.y - 0.005) continue;
+    return h.point.y;
+  }
   return 0;
 }
 
@@ -203,10 +212,12 @@ export function atualizarSeguraveis(dt: number, agora: number, bloqueado: boolea
       eul.setFromQuaternion(qTmp.copy(r.quaternion).multiply(qInv.copy(s.inclinacao).invert()), 'YXZ');
       quatNivel.setFromEuler(new THREE.Euler(0, eul.y, 0, 'YXZ')).multiply(s.inclinacao);
       r.quaternion.slerp(quatNivel, Math.min(1, dt * 6));
-      if (empurrarParaFora(r.position, s.raio)) { s.vel.x *= -0.3; s.vel.z *= -0.3; }
-      const h = alturaApoio(s, r.position);
-      if (r.position.y <= h) {
-        r.position.y = h;
+      const pe = r.position.clone(); pe.y -= s.base;
+      // primeiro vê se pousou (antes de empurrar para fora de um móvel: senão a caixa escorrega da mesa)
+      let h = alturaApoio(s, pe);
+      if (pe.y > h && empurrarParaFora(pe, s.raio)) { r.position.x = pe.x; r.position.z = pe.z; s.vel.x *= -0.3; s.vel.z *= -0.3; h = alturaApoio(s, pe); }
+      if (pe.y <= h) {
+        r.position.y = h + s.base;
         const v = Math.abs(s.vel.y);
         if (v > 0.5 && s.somImpacto && agora - s.ultimoImpacto > 0.15) { tocar(s.somImpacto, { em: r, volume: Math.min(1, 0.35 + v / 4) }); s.ultimoImpacto = agora; }
         ganchos.aoPousar(s, v);
@@ -215,12 +226,18 @@ export function atualizarSeguraveis(dt: number, agora: number, bloqueado: boolea
       }
       continue;
     }
+    // parado em cima de algo: confere de vez em quando se o apoio ainda está lá (ex.: puxaram a caixa de baixo)
+    const pe = r.position.y - s.base;
+    if (pe > 0.02 && agora >= s.proximaConferida) {
+      s.proximaConferida = agora + 0.2;
+      if (alturaApoio(s, new THREE.Vector3(r.position.x, pe, r.position.z), 0.02) < pe - 0.01) { s.estado = 'caindo'; s.vel.set(0, 0, 0); continue; }
+    }
     // em repouso no chão: o corpo do jogador empurra (esbarrar)
-    if (r.position.y < 0.3) {
+    if (pe < 0.3) {
       const dx = r.position.x - pes.x, dz = r.position.z - pes.z, d = Math.hypot(dx, dz), min = s.raio + 0.22;
       if (d < min && d > 1e-4) {
         r.position.x = pes.x + (dx / d) * min; r.position.z = pes.z + (dz / d) * min;
-        empurrarParaFora(r.position, s.raio);
+        const p2 = r.position.clone(); p2.y = pe; empurrarParaFora(p2, s.raio); r.position.x = p2.x; r.position.z = p2.z;
         if (agora - s.ultimoImpacto > 0.5 && s.somImpacto) { tocar(s.somImpacto, { em: r, volume: 0.5 }); s.ultimoImpacto = agora; }
         ganchos.aoEmpurrar(s);
         s.estado = 'caindo'; s.vel.set(0, 0, 0); // confere o apoio (pode ter saído de cima de outra caixa)

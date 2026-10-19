@@ -27,7 +27,7 @@ with sync_playwright() as p:
     print('cyberdeck:', J(pg, "return j.seguraveis.get('cyberdeck').estado"), J(pg, 'return j.ponte.pegouCyberdeck'))
     pg.screenshot(path=F+'23_segurando_cyberdeck.png')
     print('pede encaixe:', esperar_pedido(pg, 'encaixar', 30), pedido(pg))
-    J(pg, 'j.teleportar([0, 0, -16.6], 0)'); J(pg, '__t.olhar(-0.3, 1.0, -17.95)'); time.sleep(0.8)
+    J(pg, 'j.teleportar([0, 0, -16.6], 0)'); J(pg, '__t.olhar(-0.3, 1.0, -17.95)'); time.sleep(0.8); print('no console:', J(pg, 'return __t.pos()'))
     pg.screenshot(path=F+'24_no_console.png')
     clique_dir(pg)
     print('encaixou:', J(pg, 'return j.ponte.encaixou'))
@@ -40,23 +40,34 @@ with sync_playwright() as p:
     print('foco:', J(pg, 'return j.ponte.focoPC'))
     pg.screenshot(path=F+'26_foco.png')
     lugares = J(pg, 'return j.lugares()'); ocupados = set()
-    for k in range(7):
-        pecas = [x for x in J(pg, 'return j.pecas()') if not x['encaixada']]
-        if not pecas: break
-        pc = pecas[0]; tipo = pc['nome'].rsplit('_', 1)[0] if pc['nome'][-1].isdigit() else pc['nome']
-        lug = [l for l in lugares if l['tipo'] == tipo and l['nome'] not in ocupados][0]
-        a = J(pg, f"return __t.noTela(...j.consoleParaMundo({pc['pos'][0]}, {pc['pos'][1]}, {pc['pos'][2]}))")
-        d = J(pg, f"return __t.noTela(...j.consoleParaMundo({lug['pos'][0]}, {lug['pos'][1]}, {lug['pos'][2]}))")
+    def tela(x, z, y): return J(pg, f"return __t.noTela(...j.consoleParaMundo({x}, {y}, {z}))")
+    def arrastar(nome, lug, giros, virar=0):
+        pc = [x for x in J(pg, 'return j.pecas()') if x['nome'] == nome][0]
+        a = tela(pc['centro'][0], pc['centro'][1], pc['pos'][1]); d = tela(lug['centro'][0] + 0.03, lug['centro'][1] + 0.02, lug['pos'][1])
         pg.mouse.move(*a); time.sleep(0.2); pg.mouse.down(); time.sleep(0.3)
-        sim = 90 if tipo == 'peca_quadrado' else 180 if tipo == 'peca_paralelogramo' else 360
-        n = int(((lug['giro'] - pc['giro']) % sim) / 45)
-        for _ in range(n): pg.mouse.wheel(0, 100); time.sleep(0.25)
+        for _ in range(giros): pg.keyboard.press('e'); time.sleep(0.25)
+        for _ in range(virar): pg.keyboard.press('f'); time.sleep(0.25)
         for i in range(1, 7): pg.mouse.move(a[0] + (d[0]-a[0])*i/6, a[1] + (d[1]-a[1])*i/6); time.sleep(0.08)
-        time.sleep(0.3); pg.mouse.up(); time.sleep(0.4)
-        r = [x for x in J(pg, 'return j.pecas()') if x['nome'] == pc['nome']][0]
-        print(pc['nome'], 'giros', n, '->', r['encaixada'], [round(v,3) for v in r['pos']], r['giro'])
-        if r['encaixada']: ocupados.add(r['encaixada'])
-        if k == 2: pg.screenshot(path=F+'27_tangram_meio.png')
+        time.sleep(0.4); pg.mouse.up(); time.sleep(0.5)
+        return [x for x in J(pg, 'return j.pecas()') if x['nome'] == nome][0]
+    # peças iguais trocam de lugar: pequeno_1 vai no encaixe do pequeno_2 e vice-versa; o mesmo com os grandes
+    troca = {'peca_pequeno_1': 'peca_pequeno_2', 'peca_pequeno_2': 'peca_pequeno_1', 'peca_grande_1': 'peca_grande_2', 'peca_grande_2': 'peca_grande_1'}
+    # paralelogramo virado do avesso não cabe: tem que voltar (F de novo)
+    lp = [l for l in lugares if l['nome'] == 'peca_paralelogramo'][0]
+    r = arrastar('peca_paralelogramo', lp, 0, virar=1)
+    print('paralelogramo virado:', r['encaixada'], r['virada'])
+    r = arrastar('peca_paralelogramo', lp, 4, virar=1)   # girado 180° (simetria) e desvirado
+    print('paralelogramo girado 180°:', r['encaixada'], r['giro'])
+    pg.screenshot(path=F+'27_tangram_meio.png')
+    for nome in ['peca_grande_1', 'peca_grande_2', 'peca_medio', 'peca_pequeno_1', 'peca_pequeno_2', 'peca_quadrado']:
+        pc = [x for x in J(pg, 'return j.pecas()') if x['nome'] == nome][0]
+        if pc['encaixada']: continue
+        alvo = troca.get(nome, nome)
+        lug = [l for l in lugares if l['nome'] == alvo][0]
+        # os encaixes são comparados pela forma: gira 45° por vez até a sombra aceitar (como o jogador faria)
+        r = arrastar(nome, lug, 0); tent = 0
+        while not r['encaixada'] and tent < 8: r = arrastar(nome, lug, 1); tent += 1
+        print(nome, '->', r['encaixada'], 'giro', r['giro'], 'tentativas', tent)
     pg.screenshot(path=F+'28_tangram_pronto.png')
     print('pronto:', J(pg, 'return j.ponte.tangramPronto'), 'foco', J(pg, 'return j.ponte.focoPC'))
     print('fim:', pular(pg, 60, lambda: cenas(pg)['ponte_navegacao']['estado'] == 'terminada'), cenas(pg)['ponte_navegacao'])

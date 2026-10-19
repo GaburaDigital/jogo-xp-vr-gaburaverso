@@ -10,11 +10,11 @@ import '@fontsource/nunito/latin-800.css';
 import './estilo.css';
 import * as THREE from 'three';
 import { biblioteca, carregarDados, contextoAudio, prepararSons } from './nucleo/dados';
-import { opcoes, progresso, salvarOpcoes, salvarProgresso, marcarJogouVR, modoTesteLigado, ligarModoTeste, SENHA_TESTE } from './nucleo/config';
+import { opcoes, progresso, salvarOpcoes, salvarProgresso, marcarJogouVR, modoTesteLigado, ligarModoTeste, SENHA_TESTE, apagarProgresso, temJogoSalvo } from './nucleo/config';
 import { aplicarVolumesGrupos, atualizarOuvinte, iniciarAudio, pausarSom, tocar, tocarMusica } from './nucleo/audio';
-import { atualizarLuzes, atualizarSombras, camera, cena3d, iniciarMundo, instancias, portasAbertas, reduzirLuz, renderizador } from './mundo/mundo';
+import { atualizarLuzes, atualizarSombras, camera, cena3d, criarColisoresDeMoveis, iniciarMundo, instancias, portasAbertas, reduzirLuz, renderizador } from './mundo/mundo';
 import { entrada, lerPC, lerVR, ligarControlesVR, ligarPC, limparBordas } from './xr/entrada';
-import { atualizarJogador, iniciarJogador, jogador, posicaoPes, prenderRelogio, teleportar, ALTURA_OLHOS } from './xr/jogador';
+import { atualizarJogador, calibrarAltura, iniciarJogador, jogador, posicaoPes, prenderRelogio, teleportar, ALTURA_OLHOS } from './xr/jogador';
 import { atualizarSeguraveis, definirApoios, objetoNaMao, segurando, seguraveis } from './interacao/seguraveis';
 import { apertarBotao, atualizarPortas, botoesDasPortas, registrarPortas } from './interacao/portas';
 import { CENAS_DO_JOGO, atualizarDiretor, atualizarMusica, diretor, iniciarCena, montarNave, pedidoAtual, pularFala, tempoGlobal, zerarCena } from './cenas/diretor';
@@ -46,6 +46,8 @@ let pronto = false;
 let jogando = false;
 let medidorQps = false;
 let senhaVR = '', senhaErrouVR = 0;
+let confirmarTipo: 'jogo' | 'missao' = 'jogo';
+let contagemAltura = 0;
 const tela = renderizador.domElement;
 
 // =====================================================================
@@ -78,6 +80,7 @@ function contexto(): ContextoPaineis {
     missao: { nome: NOMES_MISSAO[missaoAtual()] ?? 'Nave', objetivo: objetivo(),
       luzes: { ponte: progresso.eventos.includes('acender_luz_ponte'), treinamento: false, oficina: false, portal: false } },
     senha: senhaVR, senhaErrou: senhaErrouVR, botoesVivos: entrada.botoesVivos, medidorQps, atravessar: jogador.atravessar, versao: __VERSAO_APP__,
+    confirmar: confirmarTipo, nomeReiniciar: NOMES_MISSAO[missaoParaReiniciar() ?? ''] ?? '', contagemAltura, botoesBrutos: entrada.botoesBrutos,
   };
 }
 
@@ -95,9 +98,32 @@ function agirOpcao(acao: string, valor?: number): boolean {
   else if (nome === 'reduzir_luz') { opcoes.reduzirLuz = !opcoes.reduzirLuz; reduzirLuz(opcoes.reduzirLuz, biblioteca.pacote?.iluminacao); }
   else if (nome === 'legendas') opcoes.legendas = !opcoes.legendas;
   else if (nome === 'tamanho_legenda') opcoes.tamanhoLegenda = (['P', 'M', 'G'] as const)[+arg] ?? 'M';
+  else if (nome === 'posicao') {
+    opcoes.posicao = arg === '1' ? 'sentado' : 'em_pe';
+    // sentado: mede agora (a altura atual vira 1,60 m); em pé: a altura real do jogador
+    opcoes.ajusteAltura = opcoes.posicao === 'sentado' && entrada.modo === 'vr' ? calibrarAltura() : 0;
+    jogador.alturaExtra = opcoes.ajusteAltura;
+  }
+  else if (nome === 'ajustar_altura') { ajustarAltura(); }
   else return false;
   salvarOpcoes();
   return true;
+}
+
+/** "Ajustar altura agora": 3 segundos para ficar na posição de jogar e olhar para frente. */
+function ajustarAltura(): void {
+  if (contagemAltura) return;
+  contagemAltura = 3; redesenharLogo();
+  const passo = () => {
+    contagemAltura--;
+    if (contagemAltura <= 0) {
+      contagemAltura = 0;
+      if (entrada.modo === 'vr') { opcoes.ajusteAltura = calibrarAltura(); opcoes.posicao = opcoes.ajusteAltura > 0.25 ? 'sentado' : 'em_pe'; jogador.alturaExtra = opcoes.ajusteAltura; salvarOpcoes(); }
+      tocar('sfx_botao_porta');
+    } else setTimeout(passo, 1000);
+    redesenharLogo();
+  };
+  setTimeout(passo, 1000);
 }
 
 function pausar(sim: boolean): void {
@@ -111,6 +137,8 @@ function agir(acao: string, valor?: number): void {
   if (nome === 'continuar') pausar(false);
   else if (nome === 'abrir') abrirPainel(arg as 'opcoes');
   else if (nome === 'voltar') abrirPainel(painelAberto() === 'senha' ? 'opcoes' : 'pausa');
+  else if (nome === 'confirmar') { confirmarTipo = arg === 'missao' && missaoParaReiniciar() ? 'missao' : 'jogo'; abrirPainel('confirmar'); }
+  else if (nome === 'confirmar_sim') { if (confirmarTipo === 'jogo') recomecarJogo(); else reiniciarMissao(missaoParaReiniciar()!); pausar(false); }
   else if (nome === 'recomecar') { recomecarMissao(); pausar(false); }
   else if (nome === 'sair') sair();
   else if (nome === 'teste_desligar') { ligarModoTeste(false); redesenharLogo(); }
@@ -147,23 +175,39 @@ function comecarAbertura(): void {
   void iniciarCena('sala_abertura');
 }
 
-function recomecarMissao(): void {
-  const m = missaoAtual();
-  diretor.forcarAguardar = false;
-  if (m === 'sala_abertura') { zerarCena('sala_abertura'); zerarAbertura(); desfazerEventos(EVENTOS_DA_CENA.sala_abertura); comecarAbertura(); }
-  else if (m === 'ponte_navegacao') {
-    zerarCena('ponte_navegacao'); zerarPonte(); desfazerEventos(EVENTOS_DA_CENA.ponte_navegacao);
-    const c = diretor.rodando.get('ponte_navegacao')!.cena; teleportar(c.jogador.pos, c.jogador.rotY);
-  }
+/** Qual missão "Reiniciar missão" reinicia: a que está tocando; senão, a última concluída; senão nenhuma (vira "Recomeçar jogo"). */
+function missaoParaReiniciar(): string | null {
+  if (diretor.ativa) return diretor.ativa.cena.id;
+  const feitas = progresso.cenasConcluidas.filter((c) => c in EVENTOS_DA_CENA);
+  return feitas.length ? feitas[feitas.length - 1] : null;
 }
+
+/** Volta uma missão para o começo, desfazendo o que ela mudou no mundo, e já começa de novo. */
+function reiniciarMissao(id: string): void {
+  diretor.forcarAguardar = false; sairDoFoco();
+  if (id === 'sala_abertura') { recomecarJogo(); return; }  // a abertura é o começo do jogo
+  zerarCena(id); desfazerEventos(EVENTOS_DA_CENA[id] ?? []);
+  if (id === 'ponte_navegacao') zerarPonte();
+  const c = diretor.rodando.get(id)!.cena; teleportar(c.jogador.pos, c.jogador.rotY);
+  void iniciarCena(id);
+}
+
+/** "Recomeçar jogo": tudo do zero, o jogador onde o jogo começa. */
+function recomecarJogo(): void { zerarTudo(); comecarAbertura(); }
+/** A nave volta ao estado do começo do jogo e o progresso salvo é apagado. */
+function zerarTudo(): void {
+  diretor.forcarAguardar = false; sairDoFoco();
+  for (const c of CENAS_DO_JOGO) zerarCena(c);
+  zerarAbertura(); zerarPonte();
+  desfazerEventos(Object.values(EVENTOS_DA_CENA).flat());
+  apagarProgresso();
+}
+function recomecarMissao(): void { const id = missaoParaReiniciar(); if (id) reiniciarMissao(id); else recomecarJogo(); }
 
 function irPara(id: string): void {
   diretor.forcarAguardar = false; sairDoFoco();
-  if (id === 'sala_abertura') {
-    for (const c of CENAS_DO_JOGO) zerarCena(c);
-    zerarAbertura(); zerarPonte(); desfazerEventos([...EVENTOS_DA_CENA.sala_abertura, ...EVENTOS_DA_CENA.ponte_navegacao]);
-    comecarAbertura();
-  } else if (id === 'ponte_navegacao') {
+  if (id === 'sala_abertura') recomecarJogo();
+  else if (id === 'ponte_navegacao') {
     marcarConcluida('sala_abertura'); zerarCena('ponte_navegacao'); zerarPonte(); desfazerEventos(EVENTOS_DA_CENA.ponte_navegacao);
     const c = diretor.rodando.get('ponte_navegacao')!.cena; teleportar(c.jogador.pos, c.jogador.rotY);
     void iniciarCena('ponte_navegacao');
@@ -225,15 +269,6 @@ function aplicarFocoPC(dt: number): void {
 // =====================================================================
 // VR: mãos, aviso perto da mão e medidor de quadros
 // =====================================================================
-function criarMaoVR(): THREE.Object3D {
-  const g = new THREE.Group();
-  const corpo = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.028, 0.11, 10), new THREE.MeshStandardMaterial({ color: C.sup2, roughness: 0.6 }));
-  corpo.rotation.x = Math.PI / 2 - 0.5; corpo.position.set(0, -0.01, 0.03);
-  const anel = new THREE.Mesh(new THREE.TorusGeometry(0.04, 0.007, 8, 24), new THREE.MeshBasicMaterial({ color: C.lima }));
-  anel.position.set(0, 0.02, -0.03); anel.rotation.x = 0.4;
-  g.add(corpo, anel);
-  return g;
-}
 function placaTexto(larg: number): { malha: THREE.Mesh; escrever: (t: string) => void } {
   const cv = document.createElement('canvas'); cv.width = 1024; cv.height = 160;
   const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
@@ -266,6 +301,10 @@ async function carregar(): Promise<void> {
   montarPonte();
   const atores = new Set(biblioteca.pacote!.cenas.flatMap((c) => c.atores.filter((a) => a.personagem || a.holograma || a.relogio).map((a) => a.id)));
   definirApoios((id) => seguraveis.has(id) || atores.has(id) || /^fora_|^porta_|ceu_nave|astros|titulo/.test(id));
+  // colisão de todos os móveis (só para o jogador; o que está em cima deles não é empurrado)
+  const NAO_MOVEL = /^(sala_|corredor_|porta_|mirante|janelao|astros|ceu_nave|faixas_chao|painel_luzes|fora_|titulo|alem_|tunel|portal$|led|resistor|jumper|arma_laser|lata_|balde_)/;
+  const moveis = criarColisoresDeMoveis((inst) => !seguraveis.has(inst.id) && !atores.has(inst.id) && !NAO_MOVEL.test(inst.id));
+  console.info('móveis com colisão:', moveis.join(', '));
   reduzirLuz(opcoes.reduzirLuz, biblioteca.pacote?.iluminacao);
   window.__sensibilidade = opcoes.sensibilidadeMouse;
   // o que já tinha acontecido nas outras vezes
@@ -297,6 +336,7 @@ async function jogarVR(): Promise<void> {
     entrada.modo = 'vr';
     await renderizador.xr.setSession(sessao);
     marcarJogouVR();
+    jogador.alturaExtra = opcoes.posicao === 'sentado' ? opcoes.ajusteAltura : 0;
     jogador.rig.position.set(0, 0, 0); jogador.rig.rotation.set(0, 0, 0); camera.position.set(0, 0, 0); camera.rotation.set(0, 0, 0);
     comecarJogo();
     sessao.addEventListener('visibilitychange', () => { if (sessao.visibilityState !== 'visible' && !painelAberto()) pausar(true); });
@@ -322,7 +362,6 @@ function sair(): void {
 }
 
 ligarControlesVR(renderizador, jogador.rig);
-const modelosMao = Object.values(entrada.maos).map((m) => { const o = criarMaoVR(); o.visible = false; m.pose.add(o); return o; });
 ligarPC(tela, () => { if (jogando && entrada.modo === 'pc' && !ponte.focoPC && !painelAberto()) pausar(true); });
 tela.addEventListener('mousedown', () => {
   if (!jogando || entrada.modo !== 'pc' || ponte.focoPC || painelAberto()) return;
@@ -332,7 +371,7 @@ document.addEventListener('pointerlockchange', () => { if (document.pointerLockE
 document.addEventListener('visibilitychange', () => { if (document.hidden && jogando && !painelAberto()) pausar(true); });
 
 iniciarPaineis(contexto, agir);
-iniciarTelaInicial(app, { jogarVR: () => void jogarVR(), jogarPC, agirOpcao: (a, v) => { agirOpcao(a, v); }, contexto });
+iniciarTelaInicial(app, { jogarVR: () => void jogarVR(), jogarPC, agirOpcao: (a, v) => { agirOpcao(a, v); }, contexto, temJogoSalvo, apagarJogo: zerarTudo });
 // service worker: guarda o jogo para abrir sem internet (só no site publicado)
 if ('serviceWorker' in navigator && import.meta.env.PROD) void navigator.serviceWorker.register('./sw.js').catch(() => {});
 void carregar().catch((e) => { console.error(e); avisarNaTela('não deu para carregar a nave: ' + String(e)); });
@@ -348,7 +387,6 @@ function quadro(): void {
   const dt = Math.min(0.05, relogioQuadro.getDelta());
   if (!jogando) { renderizador.render(cena3d, camera); return; }
   if (entrada.modo === 'vr') lerVR(dt); else lerPC(dt, camera);
-  for (const o of modelosMao) o.visible = entrada.modo === 'vr'; // no PC a "mão" é a mira
 
   // ---- menu ----
   if (entrada.menuBorda) {

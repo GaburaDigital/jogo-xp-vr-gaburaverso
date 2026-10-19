@@ -17,13 +17,14 @@ export interface Mao {
   fonte: XRInputSource | null;
   gatilho: boolean; gatilhoBorda: boolean; gatilhoSoltou: boolean;
   segurar: boolean; segurarBorda: boolean; segurarSoltou: boolean;
+  gatilhoValor: number; gripValor: number;   // 0 a 1 (para a animação da luva)
   velocidade: THREE.Vector3; // m/s (para jogar objetos)
   anterior: THREE.Vector3;
 }
 
 function novaMao(lado: Lado): Mao {
   return { lado, conectada: false, pose: new THREE.Group(), mira: new THREE.Group(), fonte: null,
-    gatilho: false, gatilhoBorda: false, gatilhoSoltou: false, segurar: false, segurarBorda: false, segurarSoltou: false,
+    gatilho: false, gatilhoBorda: false, gatilhoSoltou: false, segurar: false, segurarBorda: false, segurarSoltou: false, gatilhoValor: 0, gripValor: 0,
     velocidade: new THREE.Vector3(), anterior: new THREE.Vector3() };
 }
 
@@ -36,7 +37,10 @@ export const entrada = {
   menuBorda: false,              // Y (VR) ou Esc (PC)
   pularFalaBorda: false,         // Espaço (PC)
   trocarMaoBorda: false,         // Q (PC)
+  girarBorda: false,             // E (PC): girar a peça 45°
+  virarBorda: false,             // F (PC) ou A (VR, controle direito): virar a peça do avesso
   botoesVivos: new Set<string>(), // para a tela dos botões do modo de teste
+  botoesBrutos: '',              // números de todos os botões apertados (E: esquerdo, D: direito)
   // PC
   pc: { yaw: 0, pitch: 0, preso: false, teclas: new Set<string>(), mouse: new THREE.Vector2(), cliqueEsq: false, cliqueDir: false,
     rodaPassos: 0, cliqueEsqBorda: false, cliqueEsqSoltou: false, cliqueDirBorda: false },
@@ -70,10 +74,12 @@ function soltou(chave: string, agora: boolean): boolean { const a = anteriorBoto
 export function lerVR(dt: number): void {
   entrada.andar.set(0, 0); entrada.girar = 0; entrada.relogioBorda = false; entrada.menuBorda = false;
   entrada.botoesVivos.clear();
+  const brutos: string[] = [];
   for (const m of Object.values(entrada.maos)) {
     const gp = m.fonte?.gamepad;
     const bt = (i: number) => !!gp?.buttons[i]?.pressed;
     m.gatilho = bt(0); m.segurar = bt(1) || (gp?.buttons[1]?.value ?? 0) > 0.6;
+    m.gatilhoValor = gp?.buttons[0]?.value ?? (m.gatilho ? 1 : 0); m.gripValor = gp?.buttons[1]?.value ?? (m.segurar ? 1 : 0);
     m.gatilhoBorda = borda(m.lado + 'g', m.gatilho); m.gatilhoSoltou = soltou(m.lado + 'g', m.gatilho);
     m.segurarBorda = borda(m.lado + 's', m.segurar); m.segurarSoltou = soltou(m.lado + 's', m.segurar);
     const ax = gp?.axes ?? [];
@@ -88,13 +94,16 @@ export function lerVR(dt: number): void {
       if (gp && gp.buttons.length > 6) for (let i = 6; i < gp.buttons.length; i++) if (gp.buttons[i]?.pressed) { entrada.botoesVivos.add('≡'); if (borda('menu' + i, true)) entrada.menuBorda = true; }
     } else {
       entrada.girar = morto(sx);
+      if (borda('a', bt(4))) entrada.virarBorda = true;
       if (bt(4)) entrada.botoesVivos.add('A'); if (bt(5)) entrada.botoesVivos.add('B');
       if (m.gatilho) entrada.botoesVivos.add('gatilho D'); if (m.segurar) entrada.botoesVivos.add('grip D');
     }
+    gp?.buttons.forEach((b, i) => { if (b.pressed || b.touched && i > 3) brutos.push((m.lado === 'esq' ? 'E' : 'D') + i + (b.pressed ? '' : '·toque')); });
     const p = m.pose.getWorldPosition(new THREE.Vector3());
     if (dt > 0) m.velocidade.copy(p).sub(m.anterior).divideScalar(dt);
     m.anterior.copy(p);
   }
+  entrada.botoesBrutos = brutos.join(' ');
 }
 
 /** Vibração curta no controle (o relógio vibrando). */
@@ -136,6 +145,8 @@ export function ligarPC(tela: HTMLCanvasElement, aoSoltarMouse: () => void): voi
     if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) { pc.teclas.add(k); e.preventDefault(); }
     if (k === 'r' && !e.repeat) entrada.relogioBorda = true;
     if (k === 'q' && !e.repeat) entrada.trocarMaoBorda = true;
+    if (k === 'e' && !e.repeat) entrada.girarBorda = true;
+    if (k === 'f' && !e.repeat) entrada.virarBorda = true;
     if (k === ' ' && !e.repeat) { entrada.pularFalaBorda = true; e.preventDefault(); }
     // sem o mouse preso, o Esc chega aqui; com ele preso, o navegador costuma soltar sozinho (e o jogo pausa)
     if (k === 'escape') { if (!pc.preso) entrada.menuBorda = true; else document.exitPointerLock(); }
@@ -176,5 +187,6 @@ export function lerPC(dt: number, camera: THREE.Camera): void {
 /** No fim do quadro: bordas já consumidas. */
 export function limparBordas(): void {
   entrada.relogioBorda = false; entrada.menuBorda = false; entrada.pularFalaBorda = false; entrada.trocarMaoBorda = false;
+  entrada.girarBorda = false; entrada.virarBorda = false;
   entrada.pc.rodaPassos = 0;
 }

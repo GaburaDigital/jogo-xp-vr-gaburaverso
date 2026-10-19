@@ -12,11 +12,13 @@ export interface Opcoes {
   legendas: boolean;
   tamanhoLegenda: 'P' | 'M' | 'G';
   sensibilidadeMouse: number; // só no PC
+  posicao: 'em_pe' | 'sentado'; // VR: sentado sobe a visão para a altura de quem está em pé
+  ajusteAltura: number;       // m somados à altura real (medido ao escolher Sentado ou em "Ajustar altura agora")
 }
 
 export const OPCOES_PADRAO: Opcoes = {
   musica: 1, efeitos: 1, vozes: 1, giro: 'passos', passoGiro: 45, bordas: false,
-  reduzirLuz: false, legendas: true, tamanhoLegenda: 'M', sensibilidadeMouse: 1,
+  reduzirLuz: false, legendas: true, tamanhoLegenda: 'M', sensibilidadeMouse: 1, posicao: 'em_pe', ajusteAltura: 0,
 };
 
 export interface Progresso {
@@ -36,6 +38,10 @@ export const progresso: Progresso = ler(CH_PROGRESSO, { cenasConcluidas: [], eve
 
 export function salvarOpcoes(): void { gravar(CH_OPCOES, opcoes); }
 export function salvarProgresso(): void { gravar(CH_PROGRESSO, progresso); }
+/** Já existe partida salva? (alguma cena terminada ou algo aceso) */
+export function temJogoSalvo(): boolean { return progresso.cenasConcluidas.length > 0 || progresso.eventos.length > 0; }
+/** "Recomeçar jogo" / "Jogar do início": apaga só o progresso (as opções ficam). */
+export function apagarProgresso(): void { progresso.cenasConcluidas = []; progresso.eventos = []; salvarProgresso(); }
 
 /** No Quest: depois de entrar no VR uma vez, a tela inicial é pulada (até apagar os dados do navegador). */
 export function jaJogouVR(): boolean { try { return localStorage.getItem(CH_VR) === '1'; } catch { return false; } }

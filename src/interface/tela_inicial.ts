@@ -9,13 +9,15 @@ import { desenhoDoPainel, type ContextoPaineis } from './paineis';
 import { SENHA_TESTE, jaJogouVR, ligarModoTeste, modoTesteLigado } from '../nucleo/config';
 import { url } from '../nucleo/dados';
 
-type Tela = 'inicio' | 'aviso_pc' | 'senha' | 'como_jogar_vr' | 'como_jogar_pc' | 'opcoes' | 'creditos';
+type Tela = 'inicio' | 'aviso_pc' | 'senha' | 'como_jogar_vr' | 'como_jogar_pc' | 'opcoes' | 'creditos' | 'confirmar_inicio';
 
 export interface AcoesInicio {
   jogarVR: () => void;
   jogarPC: () => void;
   agirOpcao: (acao: string, valor?: number) => void;
   contexto: () => ContextoPaineis;
+  temJogoSalvo: () => boolean;
+  apagarJogo: () => void;       // "Jogar do início" confirmado: apaga o progresso e volta a nave ao começo
 }
 
 const CHAVE_OFFLINE = 'nave_offline_versao';
@@ -41,8 +43,8 @@ function ceu(w: number, h: number, n = 70, sem = 3): string {
   return out;
 }
 const octaedro = (x: number, y: number, s: number, cor: string) => `<g opacity="0.9"><polygon points="${x},${y - s} ${x + s * 0.7},${y} ${x},${y + s} ${x - s * 0.7},${y}" fill="${cor}"/><polygon points="${x},${y - s} ${x + s * 0.7},${y} ${x},${y + s * 0.1}" fill="#ffffff" opacity=".18"/><polygon points="${x},${y + s * 0.1} ${x + s * 0.7},${y} ${x},${y + s}" fill="#000" opacity=".2"/></g>`;
-/** Símbolo provisório (o arquivo original da marca ainda vai chegar): três octaedros. */
-const simbolo = (cx: number, cy: number) => octaedro(cx, cy, 52, C.lima) + octaedro(cx - 62, cy + 18, 26, C.aqua) + octaedro(cx + 62, cy + 18, 26, C.violeta);
+/** Símbolo original da marca (pacote Gabura-logo, gabura-escuro): nunca redesenhado por código. */
+const simbolo = (cx: number, cy: number) => `<image href="${url('imagens/gabura-escuro-512.png')}" x="${cx - 80}" y="${cy - 110}" width="160" height="160"/>`;
 
 function linhaDeBaixo(): string {
   const versao = 'versão ' + __VERSAO_APP__;
@@ -56,14 +58,23 @@ function linhaDeBaixo(): string {
 function desenharInicio(): { corpo: string; alvos: Alvo[] } {
   comecarAlvos();
   const pronto = carregado >= 1;
+  const salvo = pronto && acoes.temJogoSalvo();
   const rotuloVR = pronto ? 'Jogar no VR' : `Carregando a nave… ${Math.round(carregado * 100)}%`;
+  const yVR = salvo ? 304 : 318;
   let corpo = `<rect width="1280" height="720" fill="${C.fundo}"/>` + ceu(1280, 720) + octaedro(1110, 150, 46, C.violeta) + octaedro(170, 560, 30, C.aqua) +
     simbolo(640, 150) + T(640, 268, 'Experiência VR no GaburaVERSO', { s: 54, a: 'middle' }) +
-    botao(420, 318, 440, 96, rotuloVR, pronto ? { ic: 'vr', s: 38, acao: 'jogar_vr' } : { tipo: 'suave', s: 30 });
+    botao(420, yVR, 440, 96, rotuloVR, pronto ? { ic: 'vr', s: 38, acao: 'jogar_vr' } : { tipo: 'suave', s: 30 });
+  // jogo salvo (rodada 4, A): "Continuar de onde parou" já marcado; "Jogar do início" pede confirmação
+  if (salvo) {
+    corpo += R(420, 416, 440, 50, { r: 25, f: C.sup, st: C.linha }) + R(424, 420, 236, 42, { r: 21, f: C.aqua }) +
+      T(542, 448, 'Continuar de onde parou', { f: 'n', s: 17, w: 800, a: 'middle', c: C.fundo }) + T(760, 448, 'Jogar do início', { f: 'n', s: 17, w: 700, a: 'middle' });
+    pegarAlvos().push({ acao: 'tela:confirmar_inicio', x: 662, y: 418, w: 196, h: 46 });
+  }
+  const yPC = salvo ? 486 : 452, hPC = salvo ? 64 : 68;
   if (telaCurta) {
-    corpo += botao(520, 452, 240, 56, 'Mais opções', { tipo: 'contorno', s: 22, acao: 'mais_opcoes' });
+    corpo += botao(520, yPC, 240, 56, 'Mais opções', { tipo: 'contorno', s: 22, acao: 'mais_opcoes' });
   } else {
-    corpo += botao(370, 452, 540, 68, 'Jogar na versão adaptada para PC', pronto ? { tipo: 'contorno', s: 24, ic: 'pc', acao: 'jogar_pc' } : { tipo: 'suave', s: 24, ic: 'pc' }) +
+    corpo += botao(370, yPC, 540, hPC, 'Jogar na versão adaptada para PC', pronto ? { tipo: 'contorno', s: 24, ic: 'pc', acao: 'jogar_pc' } : { tipo: 'suave', s: 24, ic: 'pc' }) +
       `<line x1="120" y1="580" x2="1160" y2="580" stroke="${C.linha}" stroke-width="1.5"/>`;
     const itens: [string, string, number, string][] = [['controle', 'Como jogar', 180, 'tela:como_jogar_vr'], ['ajustes', 'Opções', 160, 'tela:opcoes'],
       ['offline', 'Salvar para jogar sem internet', 320, 'salvar_offline'], ['atualizar', 'Verificar atualização', 260, 'atualizar'], ['creditos', 'Créditos', 150, 'tela:creditos']];
@@ -72,8 +83,21 @@ function desenharInicio(): { corpo: string; alvos: Alvo[] } {
     pegarAlvos().push({ acao: modoTesteLigado() ? 'teste_desligar' : 'tela:senha', x: 30, y: 664, w: 200, h: 40 });
     corpo += icone('teste', 40, 676, 18, C.texto2) + T(64, 691, modoTesteLigado() ? 'Modo de teste ligado (desligar)' : 'Modo de teste', { f: 'n', s: 15, c: modoTesteLigado() ? C.coral : C.texto2 });
   }
-  if (!vrDisponivel && pronto && !telaCurta) corpo += T(640, 432, 'Sem VR neste navegador: no Meta Quest, use o navegador do óculos.', { f: 'n', s: 17, c: C.texto2, a: 'middle' });
+  if (!vrDisponivel && pronto && !telaCurta) corpo += T(640, 568, 'Sem VR neste navegador: no Meta Quest, use o navegador do óculos.', { f: 'n', s: 16, c: C.texto2, a: 'middle' });
   corpo += linhaDeBaixo();
+  return { corpo, alvos: pegarAlvos() };
+}
+
+/** Confirmação de "Jogar do início" (rodada 4, A: botão de apagar em Coral). */
+function desenharConfirmarInicio(): { corpo: string; alvos: Alvo[] } {
+  comecarAlvos();
+  pegarAlvos().push({ acao: 'apagar_jogo', x: 180, y: 425, w: 440, h: 92 });
+  const corpo = `<rect width="1280" height="720" fill="${C.fundo}"/>` + ceu(1280, 720) + `<rect width="1280" height="720" fill="${C.escuro}" opacity=".85"/>` +
+    R(140, 155, 1000, 410, { r: 28, f: C.painel, st: C.aqua, sw: 3 }) + R(140, 155, 1000, 96, { r: 28, f: C.sup }) + `<rect x="140" y="225" width="1000" height="26" fill="${C.sup}"/>` +
+    icone('do_inicio', 172, 181, 40, C.aqua) + T(228, 217, 'Jogar do início?', { s: 42 }) +
+    T(180, 320, 'Você volta para a abertura. As luzes acesas e as missões', { f: 'n', s: 28 }) + T(180, 360, 'feitas são apagadas.', { f: 'n', s: 28 }) +
+    R(180, 425, 440, 92, { r: 46, f: C.coral, st: C.coral, sw: 2.5 }) + icone('do_inicio', 232, 449, 44, C.fundo) + T(290, 485, 'Sim, recomeçar', { s: 34, c: C.fundo }) +
+    botao(660, 425, 440, 92, 'Cancelar', { s: 34, ic: 'voltar', acao: 'cancelar' });
   return { corpo, alvos: pegarAlvos() };
 }
 
@@ -164,6 +188,7 @@ function desenhar(): void {
   else if (tela === 'senha') d = desenharSenha();
   else if (tela === 'como_jogar_vr' || tela === 'como_jogar_pc') d = desenharComoJogar(tela === 'como_jogar_vr');
   else if (tela === 'creditos') d = desenharCreditos();
+  else if (tela === 'confirmar_inicio') d = desenharConfirmarInicio();
   else if (tela === 'opcoes') {
     // as Opções da tela inicial são as do VR (giro); a do mouse fica no menu do jogo no PC
     const pv = desenhoDoPainel('opcoes', { ...acoes.contexto(), vr: true, modoTeste: modoTesteLigado() });
@@ -193,7 +218,7 @@ function desenhar(): void {
 
 function rotuloDe(acao: string): string {
   const nomes: Record<string, string> = { jogar_vr: 'Jogar no VR', jogar_pc: 'Jogar na versão adaptada para PC', continuar_pc: 'Continuar no PC', salvar_offline: 'Salvar para jogar sem internet',
-    atualizar: 'Verificar atualização', 'tela:inicio': 'Voltar', 'tela:opcoes': 'Opções', 'tela:creditos': 'Créditos', 'tela:como_jogar_vr': 'Como jogar', 'tela:senha': 'Modo de teste', mais_opcoes: 'Mais opções',
+    atualizar: 'Verificar atualização', 'tela:inicio': 'Voltar', 'tela:confirmar_inicio': 'Jogar do início', apagar_jogo: 'Sim, recomeçar', cancelar: 'Cancelar', 'tela:opcoes': 'Opções', 'tela:creditos': 'Créditos', 'tela:como_jogar_vr': 'Como jogar', 'tela:senha': 'Modo de teste', mais_opcoes: 'Mais opções',
     voltar: 'Voltar', musica: 'Volume da música', efeitos: 'Volume dos efeitos', vozes: 'Volume das vozes', bordas: 'Escurecer as bordas ao andar',
     reduzir_luz: 'Reduzir efeitos de iluminação', legendas: 'Legendas', 'abrir:senha': 'Ativar modo de teste', teste_desligar: 'Desligar modo de teste',
     'tela:como_jogar_pc': 'Ver teclado e mouse' };
@@ -205,6 +230,8 @@ function agir(acao: string, valor?: number): void {
   if (acao === 'jogar_pc') { tela = 'aviso_pc'; desenhar(); return; }
   if (acao === 'continuar_pc') { acoes.jogarPC(); return; }
   if (acao === 'mais_opcoes') { telaCurta = false; desenhar(); return; }
+  if (acao === 'cancelar') { tela = 'inicio'; desenhar(); return; }
+  if (acao === 'apagar_jogo') { acoes.apagarJogo(); tela = 'inicio'; mensagem = 'progresso apagado: o jogo começa do início'; desenhar(); return; }
   if (acao.startsWith('tela:')) { tela = acao.slice(5) as Tela; senha = ''; desenhar(); return; }
   if (acao === 'salvar_offline') { void salvarOffline(); return; }
   if (acao === 'atualizar') { void verificarAtualizacao(); return; }

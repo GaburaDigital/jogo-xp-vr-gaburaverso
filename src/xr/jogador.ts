@@ -7,6 +7,7 @@ import * as THREE from 'three';
 import { camera, cena3d, empurrarParaFora, gltf } from '../mundo/mundo';
 import { entrada } from './entrada';
 import { opcoes } from '../nucleo/config';
+import { ESTILOS_LUVA, criarLuva, orientarNoGrip, poseRelogioNaLuva, type Luva } from './luvas';
 
 export const ALTURA_OLHOS = 1.6;
 const VELOCIDADE = 1.4;           // m/s, a mesma do Simular VR do editor
@@ -19,9 +20,17 @@ export const jogador = {
   andando: false,
   olhandoRelogio: false,
   relogioPC: false,               // PC: R levanta o pulso
+  alturaExtra: 0,                 // VR: m somados à plataforma (jogar sentado)
 };
 
+/** Altura dos olhos medida pelo óculos (m, dentro da plataforma). */
+export function alturaReal(): number { return camera.position.y; }
+/** Mede agora: a altura atual dos olhos passa a valer 1,60 m. */
+export function calibrarAltura(): number { return Math.max(0, Math.min(1.2, ALTURA_OLHOS - camera.position.y)); }
+
 let vinheta: THREE.Mesh;
+/** As luvas (só no VR; no PC a "mão" é a mira). */
+export const luvas: { esq: Luva | null; dir: Luva | null } = { esq: null, dir: null };
 let relogio: THREE.Group;
 let comunicador: { obj: THREE.Object3D; mixer: THREE.AnimationMixer; falar: THREE.AnimationAction | null; chamar: THREE.AnimationAction | null; barras: THREE.Object3D[]; leds: Record<string, THREE.Object3D | undefined> } | null = null;
 
@@ -37,6 +46,10 @@ export function iniciarJogador(): void {
   vinheta.position.z = -0.12; vinheta.renderOrder = 999; vinheta.visible = false;
   camera.add(vinheta);
   relogio = new THREE.Group(); relogio.name = 'relogio';
+  for (const [lado, sinal] of [['esq', -1], ['dir', 1]] as const) {
+    const l = criarLuva(ESTILOS_LUVA.luar, sinal); orientarNoGrip(l, sinal); l.raiz.visible = false;
+    entrada.maos[lado].pose.add(l.raiz); luvas[lado] = l;
+  }
   void montarRelogio();
 }
 
@@ -59,11 +72,9 @@ async function montarRelogio(): Promise<void> {
 export function prenderRelogio(): void {
   relogio.removeFromParent();
   if (entrada.modo === 'vr') {
-    // no grip esquerdo: a tela fica em cima do pulso, virada para cima e um pouco para dentro
-    entrada.maos.esq.pose.add(relogio);
-    relogio.position.set(0.01, 0.025, 0.11);
-    relogio.rotation.set(-Math.PI / 2, 0, 0);
-    relogio.rotateY(0.35);
+    // no pulso da luva esquerda, como no desenho aprovado (rodada 5)
+    luvas.esq!.raiz.add(relogio);
+    poseRelogioNaLuva(relogio);
   } else {
     camera.add(relogio);
     relogio.position.set(-0.12, -0.11, -0.3);
@@ -109,6 +120,7 @@ let giroArmado = true;
 /** A cada quadro: andar, girar, colisão, vinheta e "olhando o relógio". */
 export function atualizarJogador(dt: number): void {
   const { rig } = jogador;
+  if (entrada.modo === 'vr') rig.position.y = jogador.alturaExtra;
   // PC: o mouse gira o corpo (yaw) e a cabeça (pitch)
   if (entrada.modo === 'pc') {
     rig.rotation.y = entrada.pc.yaw;
@@ -138,9 +150,15 @@ export function atualizarJogador(dt: number): void {
   }
   // ---- paredes e portas fechadas seguram (também quem anda de verdade na sala) ----
   if (!jogador.atravessar) {
-    camera.getWorldPosition(cabeca);
+    // paredes e portas: sempre (pela cabeça, na altura do chão)
+    camera.getWorldPosition(cabeca); cabeca.y = 0.05;
     tmp.copy(cabeca);
-    if (empurrarParaFora(tmp, RAIO)) { rig.position.x += tmp.x - cabeca.x; rig.position.z += tmp.z - cabeca.z; }
+    if (empurrarParaFora(tmp, RAIO, 'paredes')) { rig.position.x += tmp.x - cabeca.x; rig.position.z += tmp.z - cabeca.z; }
+    // móveis: só quando anda com o analógico (no VR dá para se debruçar na mesa para pegar algo)
+    if (jogador.andando || entrada.modo === 'pc') {
+      camera.getWorldPosition(cabeca); cabeca.y = 0.05; tmp.copy(cabeca);
+      if (empurrarParaFora(tmp, 0.2, 'moveis')) { rig.position.x += tmp.x - cabeca.x; rig.position.z += tmp.z - cabeca.z; }
+    }
   }
   // ---- conforto: escurece as bordas enquanto anda ou gira ----
   const alvo = opcoes.bordas && (jogador.andando || girando) ? 0.85 : 0;
@@ -149,6 +167,7 @@ export function atualizarJogador(dt: number): void {
   vinheta.visible = mat.opacity > 0.01;
   // ---- relógio: está olhando? (tela virada para os olhos e perto do rosto) ----
   if (entrada.modo === 'vr') {
+    relogio.visible = true;
     const { pos, normal } = poseRelogio();
     camera.getWorldPosition(cabeca);
     const paraOlhos = cabeca.clone().sub(pos);
@@ -160,13 +179,19 @@ export function atualizarJogador(dt: number): void {
     jogador.olhandoRelogio = jogador.relogioPC;
   }
   comunicador?.mixer.update(0);
+  // luvas: só no VR, acompanhando o quanto gatilho e grip estão apertados
+  for (const lado of ['esq', 'dir'] as const) {
+    const l = luvas[lado], m = entrada.maos[lado]; if (!l) continue;
+    l.raiz.visible = entrada.modo === 'vr' && m.conectada;
+    if (l.raiz.visible) l.posar(m.gatilhoValor, m.gripValor);
+  }
 }
 
 function girarEmVolta(angulo: number, centro: THREE.Vector3): void {
   const { rig } = jogador;
   const d = rig.position.clone().sub(centro);
   d.applyAxisAngle(new THREE.Vector3(0, 1, 0), angulo);
-  rig.position.copy(centro).add(d); rig.position.y = 0;
+  rig.position.copy(centro).add(d); rig.position.y = jogador.alturaExtra;
   rig.rotation.y += angulo;
 }
 
@@ -175,10 +200,11 @@ export function teleportar(pos: [number, number, number], rotY: number): void {
   const { rig } = jogador;
   const r = THREE.MathUtils.degToRad(rotY);
   if (entrada.modo === 'pc') { entrada.pc.yaw = r; entrada.pc.pitch = 0; rig.rotation.y = r; rig.position.set(pos[0], 0, pos[2]); return; }
+  rig.position.y = jogador.alturaExtra;
   // no VR a cabeça pode estar fora do centro da plataforma: compensa para a cabeça cair no ponto
   rig.rotation.y = r; rig.updateMatrixWorld(true);
   camera.getWorldPosition(cabeca);
-  rig.position.x += pos[0] - cabeca.x; rig.position.z += pos[2] - cabeca.z; rig.position.y = 0;
+  rig.position.x += pos[0] - cabeca.x; rig.position.z += pos[2] - cabeca.z; rig.position.y = jogador.alturaExtra;
 }
 
 /** Olho e direção do olhar (para "olhar" do aguardar, seta e luzes). */
