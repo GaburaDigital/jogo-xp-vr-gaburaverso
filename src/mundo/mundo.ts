@@ -327,6 +327,8 @@ function criarSeta(): THREE.Group {
   g.add(haste, ponta); g.renderOrder = 5;
   return g;
 }
+/** Para os testes: a seta está aparecendo? */
+export function setaVisivel(): boolean { return !!seta?.visible; }
 export function apontar(alvo: string | null, olho: THREE.Vector3, direcao: THREE.Vector3, tempo: number): void {
   seta ??= (() => { const s = criarSeta(); cena3d.add(s); return s; })();
   const destino = alvo ? posicaoDe(alvo) : null;

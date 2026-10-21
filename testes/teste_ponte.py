@@ -66,7 +66,7 @@ with sync_playwright() as p:
         lug = [l for l in lugares if l['nome'] == alvo][0]
         # os encaixes são comparados pela forma: gira 45° por vez até a sombra aceitar (como o jogador faria)
         r = arrastar(nome, lug, 0); tent = 0
-        while not r['encaixada'] and tent < 8: r = arrastar(nome, lug, 1); tent += 1
+        while not r['encaixada'] and tent < 16: r = arrastar(nome, lug, 1); tent += 1
         print(nome, '->', r['encaixada'], 'giro', r['giro'], 'tentativas', tent)
     pg.screenshot(path=F+'28_tangram_pronto.png')
     print('pronto:', J(pg, 'return j.ponte.tangramPronto'), 'foco', J(pg, 'return j.ponte.focoPC'))

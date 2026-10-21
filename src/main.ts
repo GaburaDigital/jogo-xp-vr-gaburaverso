@@ -12,12 +12,12 @@ import * as THREE from 'three';
 import { biblioteca, carregarDados, contextoAudio, prepararSons } from './nucleo/dados';
 import { opcoes, progresso, salvarOpcoes, salvarProgresso, marcarJogouVR, modoTesteLigado, ligarModoTeste, SENHA_TESTE, apagarProgresso, temJogoSalvo } from './nucleo/config';
 import { aplicarVolumesGrupos, atualizarOuvinte, iniciarAudio, pausarSom, tocar, tocarMusica } from './nucleo/audio';
-import { apontar, atualizarLuzes, atualizarSombras, camera, cena3d, criarColisoresDeMoveis, iniciarMundo, instancias, portasAbertas, reduzirLuz, renderizador } from './mundo/mundo';
+import { apontar, setaVisivel, atualizarLuzes, atualizarSombras, camera, cena3d, criarColisoresDeMoveis, iniciarMundo, instancias, portasAbertas, reduzirLuz, renderizador } from './mundo/mundo';
 import { entrada, lerPC, lerVR, ligarControlesVR, ligarPC, limparBordas, vibrarTipo } from './xr/entrada';
 import { atualizarJogador, calibrarAltura, iniciarJogador, jogador, posicaoPes, prenderRelogio, teleportar, ALTURA_OLHOS } from './xr/jogador';
 import { atualizarSeguraveis, definirApoios, objetoNaMao, segurando, seguraveis } from './interacao/seguraveis';
 import { apertarBotao, atualizarPortas, botoesDasPortas, registrarPortas } from './interacao/portas';
-import { CENAS_DO_JOGO, historicoAvulsas, atualizarDiretor, atualizarMusica, diretor, iniciarCena, montarNave, pedidoAtual, pularFala, tempoGlobal, zerarCena } from './cenas/diretor';
+import { CENAS_DO_JOGO, historicoAvulsas, tocadasAvulsas, vozesJuntas, atualizarDiretor, atualizarMusica, diretor, iniciarCena, montarNave, pedidoAtual, pularFala, tempoGlobal, zerarCena } from './cenas/diretor';
 import { iniciarLegenda } from './interface/legenda';
 import { abrirPainel, acionar, alvosAbertos, atualizarPaineis, fecharPainel, grupoPainel, iniciarPaineis, painelAberto, redesenhar, type ContextoPaineis } from './interface/paineis';
 import { avisarNaTela, esconderTelaInicial, iniciarTelaInicial, mostrarTelaInicial, progressoCarregamento } from './interface/tela_inicial';
@@ -25,7 +25,7 @@ import { C } from './interface/svg';
 import { abertura, atualizarAbertura, manualAbertura, montarAbertura, zerarAbertura, CAIXAS } from './missoes/abertura';
 import { _consoleParaMundo, _lugaresTangram, _pecasTangram, atualizarPonte, cameraFocoPC, completarPonte, manualPonte, montarPonte, ponte, ponteConcluida, zerarPonte } from './missoes/ponte';
 import { aplicarEvento, atualizarEfeitosMundo, desfazerEventos, reaplicarEventosSalvos } from './missoes/efeitos_mundo';
-import { _atirarEm, _clones, _oQueAcerta, segurandoArma, atualizarTreino, clonesTocaveis, comecarTreino, completarTreino, manualTreino, montarTreino, treino, zerarTreino } from './missoes/treinamento';
+import { _atirarEm, _capturarTeste, _clones, _oQueAcerta, _simular, segurandoArma, atualizarTreino, clonesTocaveis, comecarTreino, completarTreino, manualTreino, montarTreino, treino, zerarTreino } from './missoes/treinamento';
 import { _alvosOficina, _pecasOficina, atualizarOficina, cameraFocoOficinaPC, completarOficina, manualOficina, montarOficina, oficina, oficinaConcluida, trocarLedPeloAceso, zerarOficina } from './missoes/oficina';
 import { atualizarToque, registrarFonteDeToque, registrarPersonagens } from './interacao/toque';
 
@@ -558,7 +558,7 @@ window.__jogo = {
   pronto: () => pronto, jogando: () => jogando, diretor, progresso, ponte, abertura, entrada, jogador, seguraveis, instancias, camera,
   agir, acionar, alvosAbertos, painelAberto, irPara, completarMissao, teleportar, tocar,
   pecas: _pecasTangram, lugares: _lugaresTangram, consoleParaMundo: _consoleParaMundo,
-  historicoAvulsas, testeTempo, treino, oficina, clones: _clones, oQueAcerta: _oQueAcerta, atirarEm: _atirarEm, pecasOficina: _pecasOficina, alvosOficina: _alvosOficina,
+  historicoAvulsas, tocadasAvulsas, vozesJuntas, setaVisivel, capturarTeste: _capturarTeste, ctxAgora: () => contextoAudio().currentTime, testeTempo, treino, oficina, clones: _clones, oQueAcerta: _oQueAcerta, simularClones: _simular, atirarEm: _atirarEm, pecasOficina: _pecasOficina, alvosOficina: _alvosOficina,
   estadoCenas: () => [...diretor.rodando.values()].map((r) => ({ id: r.cena.id, estado: r.estado, t: +r.t.toFixed(2) })),
   pedido: pedidoAtual, ctx: () => contextoAudio().state, three: THREE, prenderRelogio, portasAbertas, grupoPainel,
 };

@@ -34,9 +34,9 @@ const ESCONDERIJOS = ['caixa_robo_1', 'caixa_robo_2', 'caixa_robo_3', 'caixas_br
 /** Posto atrás do parapeito: durante a missão o jogador só anda para os lados (pedido do autor, 19/10). */
 export const POSTO = { x0: -13.3, x1: -12.45, z0: -2.2, z1: 2.2 };
 const SALA = { x0: -27.9, x1: -10.1, z0: -6.9, z1: 6.9, teto: 3.4 };
-const VEL_BOLINHA = 6;          // m/s (aprovado: rápida, mas dá para ver)
-const INTERVALO_TIRO = 0.45;    // s entre um tiro e outro
-const SAIDA_MAQUINA = 1.1;      // s entre um clone e outro na esteira
+const VEL_BOLINHA = 8;          // m/s (20/10: um pouco mais rápida)
+const INTERVALO_TIRO = 0.7;     // s entre um tiro e outro (20/10: espera maior)
+const SAIDA_MAQUINA = 2.0;      // s entre um clone e outro na esteira (20/10: mais espaçado)
 const RAIO_CLONE: Record<Tipo, number> = { gojo: 0.3, fred: 0.17 };
 const ALTURA_CLONE: Record<Tipo, number> = { gojo: 0.58, fred: 0.3 };
 
@@ -48,14 +48,19 @@ interface Clone {
   fila: Passo[]; local: Esconderijo | null; corre: boolean; paradas: number[]; semPulo: number; noAr: boolean;
   espiar: number; espiarAte: number; proximoEspiar: number; fundoY: number;
   t: number; vaga: THREE.Object3D | null; de: THREE.Vector3; para: THREE.Vector3; giro: number; sobe: number;
+  primeira: boolean; fatorV: number; espera: number; paradoDesde: number;   // 1ª corrida (rápida); velocidade suave; espera atrás de alguém
 }
 interface Modelo { cena: THREE.Object3D; clipes: THREE.AnimationClip[]; raio: number; altura: number; centroFlutuar: number; }
 
 const modelos: Partial<Record<Tipo, Modelo>> = {};
+/** Sorteio com semente (o teste automático repete as mesmas rodadas). */
+let semente = (Date.now() % 100000) + 1;
+function aleatorio(): number { semente = (semente * 16807) % 2147483647; return (semente - 1) / 2147483646; }
 let clones: Clone[] = [];
 let locais: Esconderijo[] = [];
 let obstaculos: { caixa: THREE.Box3; esconderijo?: Esconderijo }[] = [];
 let fila: Tipo[] = [];             // clones que ainda estão dentro da máquina
+let ultimoLado = 0;                // lado (x) do esconderijo do último clone que saiu
 let proximaSaida = 0;
 let maquina: THREE.Object3D | null = null;
 let vagas: THREE.Object3D[] = [];
@@ -121,14 +126,8 @@ function entradaDe(l: Esconderijo): THREE.Vector3 {
 // ---------- montar ----------
 async function carregarModelo(tipo: Tipo): Promise<void> {
   const g = await gltf(tipo === 'gojo' ? 'gojo_escala.glb' : 'fred_escala.glb'); if (!g) return;
-  // brilho de clone: o mesmo modelo, com um leve brilho aqua (um material por tipo, dividido por todos os clones)
+  // 20/10: cores normais do Gojo e do Fred (sem brilho de clone: ficava com cara de holograma)
   const cena = SkeletonUtils.clone(g.scene);
-  const trocados = new Map<THREE.Material, THREE.Material>();
-  cena.traverse((o) => {
-    const m = o as THREE.Mesh; if (!m.isMesh) return;
-    const conv = (mt: THREE.Material) => { let n = trocados.get(mt); if (!n) { n = mt.clone(); const s = n as THREE.MeshStandardMaterial; if (s.emissive) { s.emissive = new THREE.Color('#4fd6d0'); s.emissiveIntensity = 0.16; } trocados.set(mt, n); } return n; };
-    m.material = Array.isArray(m.material) ? m.material.map(conv) : conv(m.material);
-  });
   let cf = 0; cena.traverse((o) => { if (o.userData.centro_flutuar_m) cf = o.userData.centro_flutuar_m * o.scale.y; });
   // medidas validadas na galeria (o modelo com esqueleto mede errado na pose de repouso)
   modelos[tipo] = { cena, clipes: g.animations, raio: RAIO_CLONE[tipo], altura: ALTURA_CLONE[tipo], centroFlutuar: cf };
@@ -140,7 +139,8 @@ function novoClone(tipo: Tipo, n: number): Clone | null {
   obj.add(SkeletonUtils.clone(md.cena)); obj.visible = false; cena3d.add(obj);
   const mixer = new THREE.AnimationMixer(obj);
   return { n, tipo, obj, mixer, clipes: new Map(md.clipes.map((c) => [c.name, c])), clipe: '', estado: 'maquina', fila: [], local: null, corre: n % 3 === 0,
-    paradas: [], semPulo: 0, noAr: false, espiar: 0, espiarAte: 0, proximoEspiar: 0, fundoY: 0, t: 0, vaga: null, de: new THREE.Vector3(), para: new THREE.Vector3(), giro: 0, sobe: 0 };
+    paradas: [], semPulo: 0, noAr: false, espiar: 0, espiarAte: 0, proximoEspiar: 0, fundoY: 0, t: 0, vaga: null, de: new THREE.Vector3(), para: new THREE.Vector3(), giro: 0, sobe: 0,
+    primeira: false, fatorV: 1, espera: 0, paradoDesde: -1 };
 }
 
 let arma: { raiz: THREE.Group; mixer: THREE.AnimationMixer | null; disparar: THREE.AnimationClip | null; emissor: THREE.Object3D | null; contorno: THREE.Object3D[]; suporte: { pos: THREE.Vector3; quat: THREE.Quaternion } } | null = null;
@@ -223,7 +223,7 @@ const md = (c: Clone) => modelos[c.tipo]!;
 
 function localLivre(tipo: Tipo): Esconderijo | null {
   const livres = locais.filter((l) => !l.ocupado && (tipo === 'fred' || !l.soFred));
-  return livres[Math.floor(Math.random() * livres.length)] ?? null;
+  return livres[Math.floor(aleatorio() * livres.length)] ?? null;
 }
 
 function rotaPara(c: Clone, de: THREE.Vector3): Passo[] {
@@ -238,23 +238,31 @@ function rotaPara(c: Clone, de: THREE.Vector3): Passo[] {
 /** A máquina cospe o próximo clone (se houver esconderijo livre para ele). */
 function soltarDaMaquina(): boolean {
   if (!maquina || !fila.length) return false;
-  // o próximo da fila; se não houver lugar para ele (só baldes livres e ele é Gojo), sai um Fred
-  let tipo = fila[0];
-  let local = localLivre(tipo);
-  if (!local && tipo === 'gojo' && fila.includes('fred')) { tipo = 'fred'; local = localLivre('fred'); }
-  if (!local) return false;
-  fila.splice(fila.indexOf(tipo), 1);
-  const c = clones.find((k) => k.estado === 'maquina' && k.tipo === tipo); if (!c) return false;
   const a = maquina.getObjectByName('ponto_saida')!.getWorldPosition(new THREE.Vector3());
   const b = maquina.getObjectByName('ponto_fim_esteira')!.getWorldPosition(new THREE.Vector3());
+  // destinos alternados: cada clone vai para o lado oposto ao do anterior (não disputam o mesmo caminho)
+  const escolher = (t: Tipo) => {
+    const livres = locais.filter((l) => !l.ocupado && (t === 'fred' || !l.soFred)); if (!livres.length) return null;
+    const outroLado = livres.filter((l) => Math.sign(l.dentro.x - b.x) !== ultimoLado);
+    const lista = outroLado.length ? outroLado : livres; return lista[Math.floor(aleatorio() * lista.length)];
+  };
+  // o próximo da fila; se não houver lugar para ele (só baldes livres e ele é Gojo), sai um Fred
+  let tipo = fila[0];
+  let local = escolher(tipo);
+  if (!local && tipo === 'gojo' && fila.includes('fred')) { tipo = 'fred'; local = escolher('fred'); }
+  if (!local) return false;
+  ultimoLado = Math.sign(local.dentro.x - b.x);
+  fila.splice(fila.indexOf(tipo), 1);
+  const c = clones.find((k) => k.estado === 'maquina' && k.tipo === tipo); if (!c) return false;
   const frente = b.clone().sub(a).setY(0).normalize(), lado = new THREE.Vector3(-frente.z, 0, frente.x);
-  const quantos = 16 - fila.length;
-  // cada um cai para um lado da ponta da esteira (o começo não engarrafa)
+  // cai da ponta da esteira para o lado do esconderijo dele
+  const s0 = Math.sign(local.dentro.clone().sub(b).dot(lado)) || 1;
   let chao = b.clone().setY(0).addScaledVector(frente, 0.6);
-  for (const s of [quantos % 2 ? 0.8 : -0.8, quantos % 2 ? -0.8 : 0.8, 1.2, -1.2, 0]) {
+  for (const s of [s0 * 0.8, s0 * 1.2, -s0 * 0.8, 0]) {
     const p = b.clone().setY(0).addScaledVector(frente, 0.6).addScaledVector(lado, s); const [i, j] = celula(p); if (livre(i, j)) { chao = p; break; }
   }
   c.local = local; local.ocupado = c; c.estado = 'andando'; c.obj.visible = true; c.obj.position.copy(a);
+  c.primeira = true; c.fatorV = 1; c.espera = 0; c.paradoDesde = -1; c.paradas = [];
   c.fila = [{ tipo: 'esteira', de: a, para: b, t: 0, vel: 1.6 }, { tipo: 'salto', de: b, para: chao, t: 0, altura: 0.4, dur: 0.55 }, ...rotaPara(c, chao)];
   return true;
 }
@@ -263,7 +271,7 @@ function trocarEsconderijo(c: Clone): void {
   const novo = localLivre(c.tipo); if (!novo || !c.local) return;
   const velho = c.local; velho.ocupado = null; novo.ocupado = c; c.local = novo; c.corre = true;
   const ent = entradaDe(velho); const daqui = c.obj.position.clone();
-  c.estado = 'andando'; c.espiar = 0;
+  c.estado = 'andando'; c.espiar = 0; c.fatorV = 1; c.espera = 0; c.paradoDesde = -1;
   c.fila = [{ tipo: 'salto', de: daqui, para: ent, t: 0, altura: velho.borda + 0.12 - daqui.y, dur: 0.55 }, ...rotaPara(c, ent)];
 }
 
@@ -273,55 +281,14 @@ function andarClone(c: Clone, dt: number, agora: number): void {
   const r = c.fila[0];
   if (!r) {
     // chegou: fica escondido, espiando de vez em quando
-    if (c.estado === 'andando') { c.estado = 'escondido'; c.proximoEspiar = agora + 1 + Math.random() * 3; olharPosto(c); }
+    if (c.estado === 'andando') { c.estado = 'escondido'; c.primeira = false; c.proximoEspiar = agora + 1 + aleatorio() * 3; olharPosto(c); }
     return;
   }
   const dist = r.de.distanceTo(r.para);
   let clipe = 'idle';
   c.noAr = false;
-  if (r.tipo === 'andar') {
-    const correndo = c.corre && Math.sin(agora * 1.4 + c.n) > -0.3; // corre, mas para e anda de vez em quando
-    const vel = correndo ? (c.tipo === 'gojo' ? 1.8 : 1.3) : 1.0;
-    const dir = r.para.clone().sub(c.obj.position).setY(0); const falta = dir.length(); dir.normalize();
-    const R = (k: Clone) => md(k).raio;
-    // só quem está NA FRENTE atrapalha; escondidos e quem está no ar não contam
-    const bloq = clones.find((o) => o !== c && o.estado === 'andando' && !o.noAr && o.obj.position.y < 0.25 && (() => {
-      const d = o.obj.position.clone().sub(c.obj.position).setY(0); return d.length() < R(c) + R(o) + 0.12 && d.dot(dir) > 0; })());
-    const impasse = bloq && (() => { const ob = bloq.fila[0]; if (!ob || ob.tipo !== 'andar') return false; const dO = ob.para.clone().sub(bloq.obj.position).setY(0).normalize(); return c.obj.position.clone().sub(bloq.obj.position).dot(dO) > 0; })();
-    const bate = !!bloq && !(impasse && c.n < bloq.n);
-    if (bate && !r.parado) { r.parado = true; c.paradas = c.paradas.filter((x) => agora - x < 2.5); c.paradas.push(agora); }
-    if (!bate) { r.parado = false; r.espera = 0; }
-    if (bate && bloq) {
-      r.espera = (r.espera ?? 0) + dt;
-      // travou de novo: pula POR CIMA e cai além do outro, num lugar livre (sem pular de novo por 2 s)
-      if (c.paradas.length >= 2 && !(c.semPulo > agora)) {
-        const alem = bloq.obj.position.clone().setY(0).addScaledVector(dir, R(c) + R(bloq) + 0.3);
-        const [ci, cj] = celula(alem);
-        const ocupado = clones.some((o) => o !== c && o.obj.visible && o.estado === 'andando' && o.obj.position.distanceTo(alem) < R(c) + R(o) + 0.1);
-        if (livre(ci, cj) && !ocupado && alem.distanceTo(c.obj.position) < falta + 0.4) {
-          c.paradas = []; c.semPulo = agora + 2; r.de = alem.clone(); r.t = 0;
-          c.fila.unshift({ tipo: 'salto', de: c.obj.position.clone(), para: alem, t: 0, altura: 0.7, dur: 0.5 }); return;
-        }
-      }
-      // esperando demais: recalcula o caminho contornando os outros clones
-      if ((r.espera ?? 0) > 0.8) {
-        const marcadas: number[] = [];
-        for (const o of clones) if (o !== c && o.estado === 'andando' && o.obj.position.y < 0.25) {
-          const [oi, oj] = celula(o.obj.position);
-          for (let di = -2; di <= 2; di++) for (let dj = -2; dj <= 2; dj++) if (livre(oi + di, oj + dj)) { grade[oi + di + (oj + dj) * GR.nx] = 1; marcadas.push(oi + di + (oj + dj) * GR.nx); }
-        }
-        const fim = c.fila[c.fila.length - 1];
-        const destino = c.fila[c.fila.length - 2]?.para ?? r.para;
-        const novos = caminho(c.obj.position.clone().setY(0), destino);
-        for (const k of marcadas) grade[k] = 0;
-        c.fila = []; let ant = c.obj.position.clone().setY(0);
-        for (const pt of novos) { c.fila.push({ tipo: 'andar', de: ant, para: pt, t: 0 }); ant = pt; }
-        fim.de = ant; fim.t = 0; c.fila.push(fim); return;
-      }
-    } else { r.t = Math.min(1, r.t + (vel * dt) / Math.max(dist, 0.001)); clipe = correndo && c.clipes.has('correr') ? 'correr' : 'andar'; }
-    c.obj.position.lerpVectors(r.de, r.para, r.t);
-    c.obj.rotation.y = Math.atan2(r.para.x - r.de.x, r.para.z - r.de.z);
-  } else if (r.tipo === 'esteira') {
+  if (r.tipo === 'andar') { andarNoChao(c, dt, agora); return; }
+  if (r.tipo === 'esteira') {
     r.t = Math.min(1, r.t + ((r.vel ?? 1.6) * dt) / Math.max(dist, 0.001)); c.obj.position.lerpVectors(r.de, r.para, r.t);
     c.obj.rotation.y = Math.atan2(r.para.x - r.de.x, r.para.z - r.de.z);
   } else {
@@ -336,10 +303,106 @@ function andarClone(c: Clone, dt: number, agora: number): void {
   if (r.t >= 1) c.fila.shift();
 }
 
+/**
+ * Andar no chão sem "travar" (plano de 20/10, medido no teste_clones.py):
+ * - quem vem atrás SEGUE o da frente, desacelerando aos poucos pela distância (nunca anda-para-anda);
+ * - o passo do quadro continua no próximo trecho do caminho (antes o clone perdia o resto do passo em cada curva);
+ * - o corpo vira suave para a direção nova; a animação só vai para "parado" depois de 0,4 s parado;
+ * - preso: primeiro desvia para o lado, depois recalcula o caminho; pular por cima é o último recurso.
+ */
+function andarNoChao(c: Clone, dt: number, agora: number): void {
+  const r = c.fila[0];
+  const R = (k: Clone) => md(k).raio;
+  const correndo = !c.primeira && c.corre && Math.sin(agora * 1.4 + c.n) > -0.3; // depois do 1º esconderijo: corre, mas anda de vez em quando
+  const vel = c.primeira ? (c.tipo === 'gojo' ? 2.2 : 1.7) : correndo ? (c.tipo === 'gojo' ? 1.8 : 1.3) : 1.0;
+  const dir = r.para.clone().sub(c.obj.position).setY(0); const falta = dir.length();
+  if (falta < 1e-5) { c.fila.shift(); return; }
+  dir.divideScalar(falta);
+  // quem está na frente, num corredor da largura dos dois (escondidos e quem está no ar não contam)
+  let bloq: Clone | null = null, dFrente = Infinity;
+  for (const o of clones) {
+    if (o === c || o.estado !== 'andando' || o.noAr || o.obj.position.y >= 0.25) continue;
+    const d = o.obj.position.clone().sub(c.obj.position).setY(0); const adiante = d.dot(dir); if (adiante <= 0) continue;
+    const lateral = Math.sqrt(Math.max(0, d.lengthSq() - adiante * adiante)); if (lateral > (R(c) + R(o)) * 0.9) continue;
+    if (adiante < dFrente) { dFrente = adiante; bloq = o; }
+  }
+  let fator = 1;
+  if (bloq) fator = THREE.MathUtils.clamp((dFrente - (R(c) + R(bloq) + 0.06)) / 0.6, 0, 1);
+  c.fatorV += (fator - c.fatorV) * Math.min(1, dt * 7);             // acelera e freia suave
+  if (fator < 0.02 && c.fatorV < 0.05) c.fatorV = 0;
+  // preso atrás de alguém
+  if (bloq && c.fatorV === 0) {
+    if (c.espera === 0) { c.paradas = c.paradas.filter((x) => agora - x < 4); c.paradas.push(agora); }
+    c.espera += dt;
+    // os dois se esperando (um vindo contra o outro): o de número menor desvia logo
+    const ob = bloq.fila[0];
+    const contra = !!ob && ob.tipo === 'andar' && ob.para.clone().sub(bloq.obj.position).setY(0).normalize().dot(dir) < -0.3;
+    if (c.espera > (contra && c.n < bloq.n ? 0.15 : 0.35) && desviar(c, bloq, dir)) { c.espera = 0; return; }
+    if (c.espera > 0.9) { recalcular(c); c.espera = 0; return; }
+    if (c.paradas.length >= 3 && c.espera > 0.6 && !(c.semPulo > agora) && pularPorCima(c, bloq, dir, falta, agora)) { c.espera = 0; return; }
+  } else c.espera = 0;
+  // anda, levando o resto do passo para o próximo trecho do caminho
+  let resto = vel * c.fatorV * dt;
+  while (resto > 1e-6) {
+    const s = c.fila[0]; if (!s || s.tipo !== 'andar') break;
+    const v = s.para.clone().sub(c.obj.position).setY(0); const L = v.length();
+    if (L <= resto) { c.obj.position.x = s.para.x; c.obj.position.z = s.para.z; resto -= L; c.fila.shift(); continue; }
+    c.obj.position.addScaledVector(v.divideScalar(L), resto); resto = 0;
+  }
+  c.obj.position.y = 0;
+  // vira suave para onde está indo (no máximo ~1,3 volta por segundo)
+  const alvoGiro = Math.atan2(dir.x, dir.z); let dg = alvoGiro - c.obj.rotation.y; dg = Math.atan2(Math.sin(dg), Math.cos(dg));
+  c.obj.rotation.y += THREE.MathUtils.clamp(dg, -8 * dt, 8 * dt);
+  // animação: "parado" só depois de 0,4 s parado (nada de trocar andar/parado várias vezes por segundo)
+  if (c.fatorV < 0.08) { if (c.paradoDesde < 0) c.paradoDesde = agora; } else c.paradoDesde = -1;
+  const andando = c.paradoDesde < 0 || agora - c.paradoDesde < 0.4;
+  const rapido = c.primeira || correndo;
+  tocarClipe(c, !andando ? 'idle' : rapido && c.clipes.has('correr') ? 'correr' : 'andar');
+}
+/** Passo para o lado do clone da frente (num lugar livre), e depois segue o caminho. */
+function desviar(c: Clone, bloq: Clone, dir: THREE.Vector3): boolean {
+  const R = (k: Clone) => md(k).raio;
+  const lat = new THREE.Vector3(-dir.z, 0, dir.x);
+  const lado = Math.sign(lat.dot(c.obj.position.clone().sub(bloq.obj.position))) || (c.n % 2 ? 1 : -1);
+  for (const s of [lado, -lado]) for (const k of [0.55, 0.8]) {
+    const p = c.obj.position.clone().setY(0).addScaledVector(lat, s * k).addScaledVector(dir, 0.2);
+    const [i, j] = celula(p); if (!livre(i, j)) continue;
+    if (clones.some((o) => o !== c && o.estado === 'andando' && Math.hypot(o.obj.position.x - p.x, o.obj.position.z - p.z) < R(c) + R(o) + 0.08)) continue;
+    c.fila.unshift({ tipo: 'andar', de: c.obj.position.clone(), para: p, t: 0 }); return true;
+  }
+  return false;
+}
+/** Recalcula o caminho até o esconderijo contornando os outros clones. */
+function recalcular(c: Clone): void {
+  const marcadas: number[] = [];
+  for (const o of clones) if (o !== c && o.estado === 'andando' && o.obj.position.y < 0.25) {
+    const [oi, oj] = celula(o.obj.position);
+    for (let di = -2; di <= 2; di++) for (let dj = -2; dj <= 2; dj++) if (livre(oi + di, oj + dj)) { grade[oi + di + (oj + dj) * GR.nx] = 1; marcadas.push(oi + di + (oj + dj) * GR.nx); }
+  }
+  const fim = c.fila[c.fila.length - 1];
+  const destino = c.fila[c.fila.length - 2]?.para ?? c.fila[0].para;
+  const novos = caminho(c.obj.position.clone().setY(0), destino);
+  for (const k of marcadas) grade[k] = 0;
+  c.fila = []; let ant = c.obj.position.clone().setY(0);
+  for (const pt of novos) { c.fila.push({ tipo: 'andar', de: ant, para: pt, t: 0 }); ant = pt; }
+  if (fim.tipo === 'salto') { fim.de = ant; fim.t = 0; c.fila.push(fim); }
+}
+/** Último recurso: pula por cima e cai além do outro, num lugar livre (sem pular de novo por 2 s). */
+function pularPorCima(c: Clone, bloq: Clone, dir: THREE.Vector3, falta: number, agora: number): boolean {
+  const R = (k: Clone) => md(k).raio;
+  const alem = bloq.obj.position.clone().setY(0).addScaledVector(dir, R(c) + R(bloq) + 0.3);
+  const [ci, cj] = celula(alem);
+  const ocupado = clones.some((o) => o !== c && o.obj.visible && o.estado === 'andando' && o.obj.position.distanceTo(alem) < R(c) + R(o) + 0.1);
+  if (!livre(ci, cj) || ocupado || alem.distanceTo(c.obj.position) > falta + 0.4) return false;
+  c.paradas = []; c.semPulo = agora + 2;
+  c.fila.unshift({ tipo: 'salto', de: c.obj.position.clone(), para: alem, t: 0, altura: 0.7, dur: 0.5 });
+  return true;
+}
+
 /** Escondido: de vez em quando sobe para espiar o posto (é a hora boa de mirar). */
 function espiarClone(c: Clone, dt: number, agora: number): void {
   const alvo = agora < c.espiarAte ? 1 : 0;
-  if (alvo === 0 && agora >= c.proximoEspiar) { c.espiarAte = agora + 1.2 + Math.random() * 1.0; c.proximoEspiar = c.espiarAte + 2.5 + Math.random() * 3.5; }
+  if (alvo === 0 && agora >= c.proximoEspiar) { c.espiarAte = agora + 1.2 + aleatorio() * 1.0; c.proximoEspiar = c.espiarAte + 2.5 + aleatorio() * 3.5; }
   c.espiar = THREE.MathUtils.clamp(c.espiar + Math.sign(alvo - c.espiar) * dt * 4, 0, 1);
   c.obj.position.y = c.fundoY + c.espiar * md(c).altura * 0.45;
   olharPosto(c);
@@ -408,7 +471,7 @@ function atualizarBolinhas(dt: number): void {
       tocar('sfx_bolinha_esconderijo', { em: h.ponto });
       // acertou o esconderijo: o clone de dentro se abaixa (se esconde de novo) e o gato comenta
       const c = h.esconderijo.ocupado; if (c && c.estado === 'escondido') { c.espiarAte = 0; c.proximoEspiar = tempoGlobal() + 2.5; }
-      if (treino.comecou && !treino.completo && tempoGlobal() - ultimaFalaErro > 6) { falaPorEvento('treino_errou'); ultimaFalaErro = tempoGlobal(); }
+      if (treino.comecou && !treino.completo && tempoGlobal() - ultimaFalaErro > 6) { falaPorEvento('treino_errou', { seOcupado: 'descartar' }); ultimaFalaErro = tempoGlobal(); }
     }
   }
   for (let i = efeitos.length - 1; i >= 0; i--) {
@@ -445,9 +508,9 @@ function contar(): void {
   treino.capturados = clones.filter((k) => k.estado === 'voando' || k.estado === 'tubo').length;
   escreverVisor();
   const n = treino.capturados;
-  if (n === 8) falaPorEvento('treino_metade');
-  else if (n === 15) falaPorEvento('treino_ultimo');
-  else if (n < 16 && tempoGlobal() - ultimaFalaCaptura > 4) { falaPorEvento('treino_captura'); ultimaFalaCaptura = tempoGlobal(); }
+  if (n === 8) falaPorEvento('treino_metade', { validar: () => treino.capturados >= 8 && treino.capturados < 16 });
+  else if (n === 15) falaPorEvento('treino_ultimo', { validar: () => treino.capturados === 15 });
+  else if (n < 16 && tempoGlobal() - ultimaFalaCaptura > 4) { falaPorEvento('treino_captura', { seOcupado: 'descartar' }); ultimaFalaCaptura = tempoGlobal(); }
   if (n >= 16) completar();
 }
 function completar(): void {
@@ -618,21 +681,66 @@ function atualizarBotao(dt: number): void {
   }
 }
 
+// ---------- movimento dos clones (também usado pelo teste de travadas, sem desenhar) ----------
+function moverClones(dt: number, agora: number): void {
+  // a máquina cospe um clone de cada vez, sempre que houver esconderijo livre
+  if (treino.comecou && fila.length && agora >= proximaSaida) { if (soltarDaMaquina()) proximaSaida = agora + SAIDA_MAQUINA; else proximaSaida = agora + 0.5; }
+  for (const c of clones) {
+    if (c.estado === 'andando') { const antes = c.obj.position.clone(); andarClone(c, dt, agora); medir(c, antes, dt, agora); }
+    else if (c.estado === 'escondido') espiarClone(c, dt, agora);
+  }
+  // de vez em quando um clone troca de esconderijo (se houver um livre)
+  if (treino.comecou && !treino.completo && !fila.length && aleatorio() < dt / 9) {
+    const parados = clones.filter((c) => c.estado === 'escondido' && c.espiar === 0);
+    const c = parados[Math.floor(aleatorio() * parados.length)]; if (c && localLivre(c.tipo)) trocarEsconderijo(c);
+  }
+  // encostados: dois clones no chão, andando, mais perto que 70% da soma dos raios
+  const noChao = clones.filter((c) => c.estado === 'andando' && !c.noAr && c.obj.position.y < 0.25);
+  for (let i = 0; i < noChao.length; i++) for (let j = i + 1; j < noChao.length; j++) {
+    const a = noChao[i], b = noChao[j];
+    if (Math.hypot(a.obj.position.x - b.obj.position.x, a.obj.position.z - b.obj.position.z) < (md(a).raio + md(b).raio) * 0.7) estat.encostados += dt;
+  }
+}
+
+/** Medidas de "travada": paradas curtas (anda-para-anda em menos de 0,3 s) e tempo parado. */
+const estat = { tremidas: 0, paradas: 0, paradoMax: 0, encostados: 0, trocasClipe: 0 };
+const medidas = new Map<Clone, { parado: boolean; desde: number; clipe: string }>();
+function medir(c: Clone, antes: THREE.Vector3, dt: number, agora: number): void {
+  const r = c.fila[0]; if (!r || r.tipo !== 'andar') { medidas.delete(c); return; }
+  const vel = Math.hypot(c.obj.position.x - antes.x, c.obj.position.z - antes.z) / Math.max(dt, 1e-4);
+  const parado = vel < 0.15;
+  let m = medidas.get(c); if (!m) { m = { parado, desde: agora, clipe: c.clipe }; medidas.set(c, m); }
+  if (m.clipe !== c.clipe) { estat.trocasClipe++; m.clipe = c.clipe; }
+  if (parado !== m.parado) {
+    if (m.parado) { const d = agora - m.desde; if (d < 0.3) estat.tremidas++; else estat.paradas++; estat.paradoMax = Math.max(estat.paradoMax, d); }
+    m.parado = parado; m.desde = agora;
+  }
+}
+
+/** Teste automático: roda a saída dos 16 clones sem desenhar (passo de 1/30 s), capturando um a cada 3 s depois de 20 s. */
+export function _simular(segundos: number, sem: number): typeof estat & { escondidos: number; tubo: number } {
+  semente = sem; zerarTreino(); treino.comecou = true; proximaSaida = 0;
+  Object.assign(estat, { tremidas: 0, paradas: 0, paradoMax: 0, encostados: 0, trocasClipe: 0 }); medidas.clear();
+  const dt = 1 / 30; let proximaCaptura = 20;
+  for (let t = 0; t < segundos; t += dt) {
+    moverClones(dt, t);
+    if (t >= proximaCaptura) {
+      proximaCaptura += 3;
+      const alvo = clones.filter((c) => c.estado === 'escondido');
+      const c = alvo[Math.floor(aleatorio() * alvo.length)];
+      if (c) { if (c.local) c.local.ocupado = null; c.local = null; c.fila = []; c.estado = 'tubo'; c.obj.visible = false; }
+    }
+  }
+  const r = { ...estat, escondidos: clones.filter((c) => c.estado === 'escondido').length, tubo: clones.filter((c) => c.estado === 'tubo').length };
+  zerarTreino();
+  return r;
+}
+
 // ---------- a cada quadro ----------
 export function atualizarTreino(dt: number, pausado: boolean): void {
   if (pausado || !clones.length) return;
   const agora = tempoGlobal();
-  // a máquina cospe um clone de cada vez, sempre que houver esconderijo livre
-  if (treino.comecou && fila.length && agora >= proximaSaida) { if (soltarDaMaquina()) proximaSaida = agora + SAIDA_MAQUINA; else proximaSaida = agora + 0.5; }
-  for (const c of clones) {
-    if (c.estado === 'andando') andarClone(c, dt, agora);
-    else if (c.estado === 'escondido') espiarClone(c, dt, agora);
-  }
-  // de vez em quando um clone troca de esconderijo (se houver um livre)
-  if (treino.comecou && !treino.completo && !fila.length && Math.random() < dt / 9) {
-    const parados = clones.filter((c) => c.estado === 'escondido' && c.espiar === 0);
-    const c = parados[Math.floor(Math.random() * parados.length)]; if (c && localLivre(c.tipo)) trocarEsconderijo(c);
-  }
+  moverClones(dt, agora);
   atualizarCapturas(dt);
   // animação dos clones a 30 quadros por segundo (leve para o Quest)
   mixerAcum += dt;
@@ -672,7 +780,7 @@ export function comecarTreino(): void {
 export function zerarTreino(): void {
   treino.comecou = false; treino.pegouArma = false; treino.capturados = 0; treino.completo = false;
   if (jogador.limites === POSTO) jogador.limites = null;
-  fila = []; for (let i = 0; i < 16; i++) fila.push(i % 2 ? 'fred' : 'gojo');
+  fila = []; for (let i = 0; i < 16; i++) fila.push(i % 2 ? 'fred' : 'gojo'); ultimoLado = 0;
   for (const l of locais) l.ocupado = null;
   for (const c of clones) { c.estado = 'maquina'; c.obj.visible = false; c.fila = []; c.local = null; c.vaga = null; c.espiar = 0; c.clipe = ''; c.mixer.stopAllAction(); }
   for (const b of bolinhas) cena3d.remove(b.m); bolinhas.length = 0;
@@ -713,4 +821,9 @@ export function _oQueAcerta(de: number[], para: number[]): string {
   const h = primeiroAcerto(new THREE.Vector3(...de), new THREE.Vector3(...para));
   if (!h) return 'nada';
   return h.clone ? 'clone ' + h.clone.n : h.esconderijo ? 'esconderijo ' + h.esconderijo.id : 'outro ' + h.ponto.toArray().map((v) => v.toFixed(2)).join(',');
+}
+/** Teste: captura um clone na hora (como se a bolinha tivesse acertado). */
+export function _capturarTeste(): boolean {
+  const c = clones.find((k) => k.estado === 'escondido' || k.estado === 'andando'); if (!c) return false;
+  capturar(c); return true;
 }

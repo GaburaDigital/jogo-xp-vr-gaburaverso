@@ -15,7 +15,7 @@ import { mostrarLegenda } from '../interface/legenda';
 import { entrada } from '../xr/entrada';
 
 type EstadoCena = 'nao_iniciada' | 'tocando' | 'aguardando' | 'terminada';
-interface Rodando { cena: Cena; estado: EstadoCena; t: number; ctxBase: number; tBase: number; liberados: Set<number>; aguardando: number; sons: Tocando[]; geracao: number; }
+interface Rodando { cena: Cena; estado: EstadoCena; t: number; ctxBase: number; tBase: number; liberados: Set<number>; aguardando: number; sons: Tocando[]; geracao: number; congelada?: boolean; }
 
 const ACIMA_DO_RELOGIO = 0.075;
 export const CENAS_DO_JOGO = ['sala_abertura', 'ponte_navegacao', 'treino_captura', 'oficina_energia', 'portal_saida'];
@@ -78,7 +78,7 @@ export async function iniciarCena(id: string): Promise<void> {
   if (g !== r.geracao) return; // enquanto carregava, a cena foi zerada ou pulada (modo de teste)
   pararSons(r);
   if (diretor.ativa && diretor.ativa !== r) { pararSons(diretor.ativa); if (diretor.ativa.estado !== 'terminada') diretor.ativa.estado = 'nao_iniciada'; }
-  r.estado = 'tocando'; r.t = 0; r.liberados.clear(); r.aguardando = -1;
+  r.estado = 'tocando'; r.t = 0; r.liberados.clear(); r.aguardando = -1; r.congelada = false;
   diretor.ativa = r;
   retomar(r, 0);
 }
@@ -87,7 +87,7 @@ export async function iniciarCena(id: string): Promise<void> {
 export function zerarCena(id: string): void {
   const r = diretor.rodando.get(id); if (!r) return;
   pararSons(r); r.geracao++;
-  r.estado = 'nao_iniciada'; r.t = 0; r.liberados.clear(); r.aguardando = -1;
+  r.estado = 'nao_iniciada'; r.t = 0; r.liberados.clear(); r.aguardando = -1; r.congelada = false;
   if (diretor.ativa === r) diretor.ativa = null;
   progresso.cenasConcluidas = progresso.cenasConcluidas.filter((x) => x !== id); salvarProgresso();
 }
@@ -155,28 +155,63 @@ export function pularFala(): void {
 }
 
 // ---------- falas por evento (sem hora marcada) ----------
+// Regra (20/10): um personagem fala UMA coisa de cada vez.
+// - comentário rápido (acertou, errou): se alguém já está falando, é descartado (não fica esperando);
+// - os outros esperam a vez, mas valem só por alguns segundos e são conferidos de novo na hora de tocar
+//   ("falta um clone" não toca se o último já foi capturado);
+// - a fala seguinte da cena espera o comentário que está tocando terminar.
 interface Avulsa { fala: string; ator: string | null; inicio: number; som: Tocando | null; }
+interface NaFila { fala: string; ator: string | null; evento: string; ate: number; validar?: () => boolean; }
 let avulsa: Avulsa | null = null;
-const filaAvulsas: { fala: string; ator: string | null }[] = [];
+const filaAvulsas: NaFila[] = [];
 const jaTocadas = new Set<string>();
 const ultimaDoGrupo = new Map<string, string>();
 const posicaoNaSequencia = new Map<string, number>();
 /** Falas por evento pedidas até agora (para os testes automáticos). */
 export const historicoAvulsas: string[] = [];
+/** Falas por evento que de fato tocaram (para os testes automáticos). */
+export const tocadasAvulsas: { fala: string; inicio: number; fim: number }[] = [];
+export const vozesJuntas = { segundos: 0 };
+
+/** Alguém está falando agora (fala da cena ou comentário)? */
+export function alguemFalando(): boolean {
+  const r = diretor.ativa;
+  return !!avulsa || filaAvulsas.length > 0 || (!!r && r.estado === 'tocando' && tocador.falasAtivas(r.cena, r.t).length > 0);
+}
+
+export interface OpcoesFalaEvento {
+  /** 'descartar': se alguém está falando, não fala. 'esperar' (padrão): espera a vez por até "validade" segundos. */
+  seOcupado?: 'descartar' | 'esperar';
+  validade?: number;
+  /** Conferido na hora de tocar: se der falso, a fala é descartada. */
+  validar?: () => boolean;
+}
 
 /** Toca uma fala por evento (sorteio sem repetir a anterior, sequência ou uma vez só). */
-export function falaPorEvento(idEvento: string): void {
+export function falaPorEvento(idEvento: string, o: OpcoesFalaEvento = {}): void {
   const e = biblioteca.pacote?.falas_por_evento?.find((x) => x.id === idEvento); if (!e) return;
+  if (o.seOcupado === 'descartar' && alguemFalando()) return;
+  if (filaAvulsas.some((f) => f.evento === idEvento)) return;   // o mesmo evento não entra duas vezes na fila
   let fala: string | undefined;
   if (e.modo === 'uma_vez') { if (jaTocadas.has(e.id)) return; jaTocadas.add(e.id); fala = e.falas[0]; }
   else if (e.modo === 'sequencia') { const i = posicaoNaSequencia.get(e.id) ?? 0; if (i >= e.falas.length) return; fala = e.falas[i]; posicaoNaSequencia.set(e.id, i + 1); }
   else { const outras = e.falas.filter((f) => f !== ultimaDoGrupo.get(e.id)); fala = outras[Math.floor(Math.random() * outras.length)] ?? e.falas[0]; ultimaDoGrupo.set(e.id, fala); }
   if (!fala) return;
   const ator = e.ator ?? (biblioteca.falas.get(fala)?.personagem === 'gaburia' ? 'gaburia' : null);
-  filaAvulsas.push({ fala, ator: ator === 'gaburia' ? 'gaburia' : ator }); historicoAvulsas.push(fala);
+  filaAvulsas.push({ fala, ator: ator === 'gaburia' ? 'gaburia' : ator, evento: e.id, ate: contextoAudio().currentTime + (o.validade ?? 6), validar: o.validar });
+  historicoAvulsas.push(fala);
   void prepararSons([fala]);
 }
-export function zerarFalasPorEvento(ids: string[]): void { for (const id of ids) { jaTocadas.delete(id); posicaoNaSequencia.delete(id); } }
+/** Uma fala da fila perdeu a vez (venceu ou não vale mais): "uma vez só" volta a poder acontecer. */
+function descartarDaFila(f: NaFila): void {
+  const e = biblioteca.pacote?.falas_por_evento?.find((x) => x.id === f.evento);
+  if (e?.modo === 'uma_vez') jaTocadas.delete(e.id);
+  if (e?.modo === 'sequencia') posicaoNaSequencia.set(e.id, Math.max(0, (posicaoNaSequencia.get(e.id) ?? 1) - 1));
+}
+export function zerarFalasPorEvento(ids: string[]): void {
+  for (const id of ids) { jaTocadas.delete(id); posicaoNaSequencia.delete(id); }
+  for (let i = filaAvulsas.length - 1; i >= 0; i--) if (ids.includes(filaAvulsas[i].evento)) filaAvulsas.splice(i, 1);
+}
 
 // ---------- a cada quadro ----------
 const relogioGlobal = { t: 0 };
@@ -185,7 +220,14 @@ export function atualizarDiretor(dt: number, pausado: boolean): void {
   const ctx = contextoAudio();
   const r = diretor.ativa;
   if (r && !pausado) {
-    if (r.estado === 'tocando') {
+    // um comentário está tocando e a próxima fala da cena vai começar: a cena espera (não fala por cima)
+    if (r.estado === 'tocando' && avulsa && !r.congelada) {
+      const t = r.tBase + (ctx.currentTime - r.ctxBase);
+      const proxima = tocador.falasDa(r.cena).find((b) => b.t >= r.t - 1e-6 && b.t <= t + 0.15);
+      if (proxima) { r.congelada = true; r.t = Math.max(r.t, proxima.t - 0.05); pararSons(r); }
+    }
+    if (r.congelada) { if (!avulsa) { r.congelada = false; retomar(r, r.t); } }
+    else if (r.estado === 'tocando') {
       let t = r.tBase + (ctx.currentTime - r.ctxBase);
       if (t < r.tBase) t = r.tBase;
       // eventos que ficaram para trás
@@ -209,11 +251,16 @@ export function atualizarDiretor(dt: number, pausado: boolean): void {
   // fila de falas por evento (uma de cada vez, nunca por cima de uma fala da cena)
   const falandoCena = r ? tocador.falasAtivas(r.cena, r.t).length > 0 && r.estado === 'tocando' : false;
   if (avulsa && ctx.currentTime - avulsa.inicio > duracaoFala(avulsa.fala) + 0.3) avulsa = null;
+  // vencidas ou que não valem mais saem da fila sem tocar
+  for (let i = filaAvulsas.length - 1; i >= 0; i--) { const f = filaAvulsas[i]; if (ctx.currentTime > f.ate || (f.validar && !f.validar())) { descartarDaFila(f); filaAvulsas.splice(i, 1); } }
   if (!avulsa && !falandoCena && filaAvulsas.length && !pausado) {
     const prox = filaAvulsas.shift()!;
-    avulsa = { ...prox, inicio: ctx.currentTime, som: tocar(prox.fala) };
-    if (!avulsa.som) avulsa = null; else (avulsa.som as Tocando & { relogio?: boolean }).relogio = prox.ator === 'gaburia';
+    avulsa = { fala: prox.fala, ator: prox.ator, inicio: ctx.currentTime, som: tocar(prox.fala) };
+    if (!avulsa.som) avulsa = null;
+    else { (avulsa.som as Tocando & { relogio?: boolean }).relogio = prox.ator === 'gaburia'; tocadasAvulsas.push({ fala: prox.fala, inicio: ctx.currentTime, fim: ctx.currentTime + duracaoFala(prox.fala) }); }
   }
+  // teste: tempo com duas vozes ao mesmo tempo (fala da cena + comentário) — tem que ficar em zero
+  if (avulsa && r && r.estado === 'tocando' && !r.congelada && tocador.falasAtivas(r.cena, r.t).length) vozesJuntas.segundos += dt;
   aplicarCenas();
   // voz de quem está no relógio: normal olhando, 40% sem olhar
   for (const s of [...(r?.sons ?? []), ...(avulsa?.som ? [avulsa.som] : [])]) {
@@ -260,7 +307,8 @@ function aplicarCenas(): void {
         if (ator?.relogio) { nivelRelogio = tocador.nivelVoz(b.fala, t - b.t); tRelogio = t - b.t; }
         if (ator?.holograma && !ator.relogio) brilhar(ator.id, tocador.nivelVoz(b.fala, t - b.t));
       }
-      const seta = r.estado === 'tocando' || r.estado === 'aguardando' ? tocador.setaEm(c, t) : null;
+      let seta = r.estado === 'tocando' || r.estado === 'aguardando' ? tocador.setaEm(c, t) : null;
+      if (seta && setaCumprida(r, seta, t)) seta = null;
       const { origem, direcao } = olhar();
       apontar(seta, origem, direcao, relogioGlobal.t);
     }
@@ -289,6 +337,16 @@ function aplicarCenas(): void {
   abaixarMusica(falandoAlguem);
   relogioFalando(nivelRelogio, tRelogio);
   relogioChamando(nivelRelogio > 0.02 && !jogador.olhandoRelogio, relogioGlobal.t);
+}
+
+/** A seta some quando o jogador já chegou aonde ela aponta (20/10: no VR ela ficava o tempo todo, porque a cena
+ *  para no "aguardar" e o tempo da seta não acaba). Vale: o "chegar" da seta cumprido, ou estar a menos de 1,6 m do alvo. */
+function setaCumprida(r: Rodando, alvo: string, t: number): boolean {
+  const lista = aguardosDa(r.cena);
+  const bloco = r.cena.faixas.flatMap((f) => (f.tipo === 'seta' ? f.blocos : [])).find((b) => t >= b.t && t < b.t + b.dur && b.alvo === alvo);
+  if (bloco && lista.some((a, i) => a.condicao.tipo === 'chegar' && a.t >= bloco.t - 1e-3 && a.t <= bloco.t + bloco.dur && (r.liberados.has(i) || cumprido(a.condicao)))) return true;
+  const p = posicaoDe(alvo), pes = posicaoPes();
+  return !!p && Math.hypot(p.x - pes.x, p.z - pes.z) < 1.6;
 }
 
 /** A Gabu_IA do relógio: holograma da cabeça 7,5 cm acima do relógio, só com o pulso levantado. */

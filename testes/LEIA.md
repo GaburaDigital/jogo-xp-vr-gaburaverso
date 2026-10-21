@@ -19,6 +19,8 @@ cd testes && python3 teste_abertura.py                       # em outro
 | `teste_menus.py` | jogo salvo na tela inicial, "Jogar do início", pausa 4 × 2, "Reiniciar missão", "Recomeçar jogo" e a colisão da mesa |
 | `teste_treino.py` | treinamento: clones saindo da máquina e se escondendo, posto (só para os lados), pegar a arma, errar o esconderijo, capturar os 16, luz acesa, botão "não aperte" |
 | `teste_oficina.py` | oficina: posto, câmera de foco, pegadinhas (resistor queimado e jumper curto não encaixam), LED ao contrário e virado com F, motor ligando |
+| `teste_clones.py` | clones sem travar: 20 rodadas da saída dos 16 clones (simulação a 30 qps, sem desenhar); conta tremidas (anda-para-anda em menos de 0,3 s), paradas e clones encostados |
+| `teste_entrega21.py` | portas com botão (abre, fecha, abre por dentro, fecha ao voltar), seta que some no posto, capturas rápidas sem uma fala por cima da outra, clones com a cor normal |
 | `teste_missoes.py` | reiniciar o treinamento no meio, trocar de sala com uma missão pela metade, recarregar com tudo feito |
 
 O jogo expõe `window.__jogo` (estado e funções) só para estes testes. `j.testeTempo.escala` acelera a simulação (o Chrome sem placa de vídeo roda a uns 5 quadros por segundo). O teste final continua sendo no Quest.

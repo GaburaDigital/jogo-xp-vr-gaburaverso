@@ -34,13 +34,18 @@ O jogador acorda na nave do Gaburaverso. A Gabu_IA, pelo relógio do pulso, guia
 - Tangram no VR (19/10): a peça vai na mão, deitada; gira e vira só pelos botões; solta fora da mesa volta para o lugar do começo; em cima da mesa fica onde caiu.
 - Vibração (19/10, para testar): perto de algo (0,12 · 18 ms), segurou (0,3 · 35 ms), encaixe e botão (0,5 · 60 ms), tocar personagem (0,2 · 30 ms, no máximo a cada 0,5 s), tiro (0,9 · 110 ms).
 - Missões em qualquer ordem depois da abertura; entrar na sala de outra missão com uma pela metade volta a anterior ao começo.
+- Treinamento (20/10): clones com as cores normais; saem da máquina a cada 2 s, correm mais rápido até o 1º esconderijo e vão para lados alternados; quem vem atrás segue o da frente (sem anda-para-anda). Bolinha 8 m/s, 0,7 s entre tiros.
+- Falas (20/10): uma de cada vez. Comentário rápido é descartado se alguém está falando; os outros esperam até 6 s e são conferidos na hora; a cena espera o comentário terminar.
+- Seta: some quando o jogador chega aonde ela aponta.
+- Portas com botão (20/10): o botão abre e fecha; por dentro do corredor abrem sozinhas; fecham sozinhas quando o jogador volta para a sala central.
 - Treinamento: posto só para os lados durante a captura; arma só na mão que pegou; soltou ou saiu da sala, volta para o suporte. PC: mouse mira, clique atira, clique direito pega e solta.
+- Oficina (20/10): LED novo "pernas paralelas" (cabeça numa peça só, perna + bem mais comprida, lado chato no −) e resistor de fio contínuo. Peça tirada do lugar só encaixa de novo depois de se afastar 10 cm.
 - Oficina: o LED começa virado na bandeja (quem não olhar o quadro encaixa ao contrário e aprende a polaridade). PC: câmera de foco como no tangram, F vira o LED.
 
 ## Entregas
 
 1. Base, interface, abertura e ponte. 1.1: luvas, recomeços, altura, tangram novo, colisão dos móveis, ícone.
-2. Treinamento (captura dos clones) e oficina (circuito), com os ajustes do teste da 1.1 (colisão, alcance, tangram na mão, vibração, nome do app).
+2. Treinamento (captura dos clones) e oficina (circuito), com os ajustes do teste da 1.1 (colisão, alcance, tangram na mão, vibração, nome do app). 2.1: clones sem travar e com a cor normal, uma fala de cada vez, arma, LED e resistor novos, LED que não gruda, seta, portas.
 3. (juntada com a 2)
 4. Portal, túnel e créditos.
 5. Desempenho e acabamento final.

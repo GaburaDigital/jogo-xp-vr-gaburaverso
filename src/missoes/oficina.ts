@@ -74,8 +74,13 @@ export function montarOficina(): void {
 }
 
 let maoUltima: 'esq' | 'dir' | null = null;
+/** Peça tirada do lugar só encaixa de novo depois de se afastar 10 cm (senão ela "grudava" de volta na hora: teste no Quest, 20/10). */
+const afastou = new Map<string, boolean>();
+const AFASTAR = 0.1;
 function aoPegarPeca(id: string): void {
   maoUltima = seguraveis.get(id)?.mao?.lado ?? null;
+  const s = seguraveis.get(id), a = alvos.get(id);
+  afastou.set(id, !(s && a && pertoDe(s.inst.raiz.position, a.pos, AFASTAR)));
   // tirar uma peça encaixada (o LED ao contrário) libera o lugar
   if (encaixadas.has(id)) encaixadas.delete(id);
   if (id === 'resistor_queimado') falaPorEvento('oficina_resistor_queimado');
@@ -101,7 +106,7 @@ function tentarEncaixar(id: string, lado: 'esq' | 'dir' | null): boolean {
     if (parecido && pertoDe(p, parecido.pos, ENCAIXE * 1.5)) { tocar('sfx_peca_errada', { em: parecido.pos }); vibrarTipo(lado, 'perto'); }
     return false;
   }
-  const a = alvos.get(id)!; if (!pertoDe(p, a.pos, ENCAIXE)) return false;
+  const a = alvos.get(id)!; if (!pertoDe(p, a.pos, ENCAIXE) || afastou.get(id) === false) return false;
   const e = poseEncaixe(id, s.inst.raiz.quaternion)!;
   s.estado = 'repouso'; s.vel.set(0, 0, 0); s.mao = null;
   s.inst.raiz.position.copy(e.pos); s.inst.raiz.quaternion.copy(e.quat);
@@ -122,7 +127,7 @@ function tentarEncaixar(id: string, lado: 'esq' | 'dir' | null): boolean {
 function conferirCircuito(acabouDeAcertar: boolean): void {
   const pronto = Object.keys(LUGAR).every((id) => encaixadas.get(id) === true);
   if (pronto) { oficina.circuitoPronto = true; oficina.focoPC = false; return; }
-  if (acabouDeAcertar && tempoGlobal() - ultimaFalaCerta > 5) { falaPorEvento('oficina_peca_certa'); ultimaFalaCerta = tempoGlobal(); }
+  if (acabouDeAcertar && tempoGlobal() - ultimaFalaCerta > 5) { falaPorEvento('oficina_peca_certa', { seOcupado: 'descartar' }); ultimaFalaCerta = tempoGlobal(); }
 }
 
 function mostrarDesenho(nome: string): void { const d = quadro?.getObjectByName('destaque_' + nome); if (d) d.visible = true; }
@@ -168,6 +173,7 @@ function oficinaPC(): void {
     const s = seguraveis.get(arrastando.id)!;
     const hit = raio.ray.intersectPlane(plano, new THREE.Vector3());
     if (hit) s.inst.raiz.position.set(hit.x, 0.95, hit.z);
+    { const a = alvos.get(arrastando.id); if (a && !afastou.get(arrastando.id) && !pertoDe(s.inst.raiz.position, a.pos, AFASTAR)) afastou.set(arrastando.id, true); }
     const ref = alvoDe(arrastando.id);
     if (entrada.virarBorda && arrastando.id === 'led') { arrastando.virado = !arrastando.virado; tocar('sfx_tangram_girar', { em: s.inst.raiz }); }
     if (ref) s.inst.raiz.quaternion.copy(ref.quat).multiply(arrastando.id === 'led' && arrastando.virado ? giro180 : new THREE.Quaternion());
@@ -220,7 +226,8 @@ export function atualizarOficina(_dt: number, pausado: boolean): void {
         if (entrada.virarBorda) { s.offset.multiply(new THREE.Matrix4().makeRotationY(Math.PI)); tocar('sfx_tangram_girar', { em: s.inst.raiz }); }
       }
       const a = alvos.get(id);
-      if (a && s.inst.raiz.position.distanceTo(a.pos) < 0.04) { const lado = s.mao.lado; s.mao = null; s.estado = 'caindo'; tentarEncaixar(id, lado); }
+      if (a && !afastou.get(id) && !pertoDe(s.inst.raiz.position, a.pos, AFASTAR)) afastou.set(id, true);
+      if (a && afastou.get(id) && s.inst.raiz.position.distanceTo(a.pos) < 0.04) { const lado = s.mao.lado; s.mao = null; s.estado = 'caindo'; tentarEncaixar(id, lado); }
     }
     if (!mostrou) mostrarSombras(null, null);
   }
