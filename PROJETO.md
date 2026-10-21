@@ -39,6 +39,8 @@ O jogador acorda na nave do Gaburaverso. A Gabu_IA, pelo relógio do pulso, guia
 - Seta: some quando o jogador chega aonde ela aponta.
 - Portas com botão (20/10): o botão abre e fecha; por dentro do corredor abrem sozinhas; fecham sozinhas quando o jogador volta para a sala central.
 - Treinamento: posto só para os lados durante a captura; arma só na mão que pegou; soltou ou saiu da sala, volta para o suporte. PC: mouse mira, clique atira, clique direito pega e solta.
+- Final (21/10): a câmara do portal abre sempre; a alavanca só destrava com as 3 luzes (sem elas, balança e a Gabu_IA explica). As 3 luzes acendem a faixa do portal na sala central e as luzinhas do aro, da porta e da alavanca (uma por missão). O túnel fica a 700 m da nave (a cena é deslocada) e a plataforma leva o jogador, com vinheta de conforto leve. Créditos num painel, em ordem, sobre a imagem escura; Recomeçar pede confirmação.
+- Oficina (21/10): no PC a atração do encaixe é maior (20 cm; VR 14 cm).
 - Oficina (20/10): LED novo "pernas paralelas" (cabeça numa peça só, perna + bem mais comprida, lado chato no −) e resistor de fio contínuo. Peça tirada do lugar só encaixa de novo depois de se afastar 10 cm.
 - Oficina: o LED começa virado na bandeja (quem não olhar o quadro encaixa ao contrário e aprende a polaridade). PC: câmera de foco como no tangram, F vira o LED.
 
@@ -46,6 +48,6 @@ O jogador acorda na nave do Gaburaverso. A Gabu_IA, pelo relógio do pulso, guia
 
 1. Base, interface, abertura e ponte. 1.1: luvas, recomeços, altura, tangram novo, colisão dos móveis, ícone.
 2. Treinamento (captura dos clones) e oficina (circuito), com os ajustes do teste da 1.1 (colisão, alcance, tangram na mão, vibração, nome do app). 2.1: clones sem travar e com a cor normal, uma fala de cada vez, arma, LED e resistor novos, LED que não gruda, seta, portas.
-3. (juntada com a 2)
-4. Portal, túnel e créditos.
+3. Portal, túnel e créditos (jogo completo). Falta só a foto dos créditos (`public/imagens/creditos_foto.jpg`).
+4. (juntada com a 3)
 5. Desempenho e acabamento final.

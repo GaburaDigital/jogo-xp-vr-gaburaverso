@@ -18,7 +18,7 @@ type EstadoCena = 'nao_iniciada' | 'tocando' | 'aguardando' | 'terminada';
 interface Rodando { cena: Cena; estado: EstadoCena; t: number; ctxBase: number; tBase: number; liberados: Set<number>; aguardando: number; sons: Tocando[]; geracao: number; congelada?: boolean; }
 
 const ACIMA_DO_RELOGIO = 0.075;
-export const CENAS_DO_JOGO = ['sala_abertura', 'ponte_navegacao', 'treino_captura', 'oficina_energia', 'portal_saida'];
+export const CENAS_DO_JOGO = ['sala_abertura', 'ponte_navegacao', 'treino_captura', 'oficina_energia', 'portal_saida', 'tunel_despedida'];
 
 export const diretor = {
   rodando: new Map<string, Rodando>(),
@@ -35,7 +35,7 @@ export const diretor = {
 
 const cenaPorId = (id: string) => biblioteca.pacote?.cenas.find((c) => c.id === id);
 
-/** Cria todos os objetos e personagens das cenas do jogo (o túnel fica para a próxima entrega). */
+/** Cria todos os objetos e personagens das cenas do jogo. */
 export async function montarNave(aoProgresso: (k: number) => void): Promise<void> {
   const p = biblioteca.pacote!;
   const pedidos: Promise<unknown>[] = [];
@@ -385,6 +385,7 @@ export function atualizarMusica(): void {
 }
 function musicaDaSala(): string {
   const p = posicaoPes();
+  if (p.z < -500) return 'mus_tunel';
   if (p.z < -9.8) return 'mus_ponte';
   if (p.x < -9.8) return 'mus_treino';
   if (p.x > 9.8) return 'mus_oficina';

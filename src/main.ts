@@ -28,6 +28,8 @@ import { aplicarEvento, atualizarEfeitosMundo, desfazerEventos, reaplicarEventos
 import { _atirarEm, _capturarTeste, _clones, _oQueAcerta, _simular, segurandoArma, atualizarTreino, clonesTocaveis, comecarTreino, completarTreino, manualTreino, montarTreino, treino, zerarTreino } from './missoes/treinamento';
 import { _alvosOficina, _pecasOficina, atualizarOficina, cameraFocoOficinaPC, completarOficina, manualOficina, montarOficina, oficina, oficinaConcluida, trocarLedPeloAceso, zerarOficina } from './missoes/oficina';
 import { atualizarToque, registrarFonteDeToque, registrarPersonagens } from './interacao/toque';
+import { DESLOCAMENTO_TUNEL, _escuro, atualizarPortal, atualizarPortalDepois, atualizarTelaFinal, completarPortal, deslocarCena, fecharCreditos, irParaOTunel, manualPortal, montarPortal, mostrarCreditos, portal, tresLuzes, zerarPortal } from './missoes/portal';
+import { url } from './nucleo/dados';
 
 // =====================================================================
 // Página
@@ -51,12 +53,13 @@ let medidorQps = false;
 let senhaVR = '', senhaErrouVR = 0;
 let confirmarTipo: 'jogo' | 'missao' = 'jogo';
 let contagemAltura = 0;
+let fotoCreditos: string | null = null;   // public/imagens/creditos_foto.jpg (o autor manda); sem ela, espaço reservado
 const tela = renderizador.domElement;
 
 // =====================================================================
 // Painéis (menu de pausa e companhia)
 // =====================================================================
-const NOMES_MISSAO: Record<string, string> = { sala_abertura: 'Abertura', ponte_navegacao: 'Ponte', treino_captura: 'Treinamento', oficina_energia: 'Oficina', livre: 'Explorar a nave' };
+const NOMES_MISSAO: Record<string, string> = { sala_abertura: 'Abertura', ponte_navegacao: 'Ponte', treino_captura: 'Treinamento', oficina_energia: 'Oficina', portal_saida: 'Portal', tunel_despedida: 'Despedida', livre: 'Explorar a nave' };
 const OBJETIVOS: [RegExp, string][] = [
   [/mirante/, 'Ir até o mirante, perto da janela.'], [/olhar pela janela/, 'Olhar pela janela.'], [/andar até as caixas/, 'Andar até as caixas.'],
   [/pegar o primeiro objeto/, 'Pegar uma caixa.'], [/relógio/, 'Levantar o pulso esquerdo e olhar o relógio.'],
@@ -65,6 +68,7 @@ const OBJETIVOS: [RegExp, string][] = [
   [/suporte da arma/, 'Ir até o posto, ao lado do suporte da arma.'], [/pegar a arma/, 'Pegar a arma de captura laser no suporte.'],
   [/capturar os 16/, 'Capturar os 16 clones. Mire só no clone: acertar o esconderijo não conta.'],
   [/posto da protoboard/, 'Pisar no posto, na frente da protoboard.'], [/montar o circuito/, 'Montar o circuito seguindo o quadro do esquema.'],
+  [/ir até a alavanca/, 'Ir até a alavanca, na frente do portal.'], [/puxar a alavanca/, 'Puxar a alavanca.'], [/atravessar o portal/, 'Atravessar o portal.'],
 ];
 /** Missões com sala (podem ser feitas em qualquer ordem depois da abertura). */
 const MISSOES = [
@@ -83,7 +87,7 @@ function objetivo(): string {
   const m = missaoAtual();
   if (m === 'livre') {
     const faltam = MISSOES.filter((x) => !progresso.cenasConcluidas.includes(x.id)).map((x) => x.nome);
-    if (!faltam.length) return 'As três luzes estão acesas! O portal chega na próxima versão do jogo.';
+    if (!faltam.length) return progresso.cenasConcluidas.includes('portal_saida') ? 'Você terminou o jogo! Atravesse o portal de novo para rever a despedida.' : 'As três luzes estão acesas! Vá até a câmara do portal, atrás da sala central, e puxe a alavanca.';
     return 'Escolha uma missão: ' + faltam.join(', ') + '.';
   }
   return 'Escute a Gabu_IA.';
@@ -92,9 +96,10 @@ function contexto(): ContextoPaineis {
   return {
     vr: entrada.modo === 'vr', modoTeste: modoTesteLigado(),
     missao: { nome: NOMES_MISSAO[missaoAtual()] ?? 'Nave', objetivo: objetivo(),
-      luzes: { ponte: progresso.eventos.includes('acender_luz_ponte'), treinamento: progresso.eventos.includes('acender_luz_treinamento'), oficina: progresso.eventos.includes('acender_luz_oficina'), portal: false } },
+      luzes: { ponte: progresso.eventos.includes('acender_luz_ponte'), treinamento: progresso.eventos.includes('acender_luz_treinamento'), oficina: progresso.eventos.includes('acender_luz_oficina'), portal: progresso.eventos.includes('abrir_portal') } },
     senha: senhaVR, senhaErrou: senhaErrouVR, botoesVivos: entrada.botoesVivos, medidorQps, atravessar: jogador.atravessar, versao: __VERSAO_APP__,
     confirmar: confirmarTipo, nomeReiniciar: NOMES_MISSAO[missaoParaReiniciar() ?? ''] ?? '', contagemAltura, botoesBrutos: entrada.botoesBrutos,
+    creditos: portal.creditos, fotoCreditos,
   };
 }
 
@@ -150,7 +155,8 @@ function agir(acao: string, valor?: number): void {
   const [nome, arg] = acao.split(':');
   if (nome === 'continuar') pausar(false);
   else if (nome === 'abrir') abrirPainel(arg as 'opcoes');
-  else if (nome === 'voltar') abrirPainel(painelAberto() === 'senha' ? 'opcoes' : 'pausa');
+  else if (nome === 'voltar') abrirPainel(portal.creditos >= 0 ? 'creditos' : painelAberto() === 'senha' ? 'opcoes' : 'pausa');
+  else if (nome === 'creditos_sair') { fecharCreditos(); sair(); }
   else if (nome === 'confirmar') { confirmarTipo = arg === 'missao' && missaoParaReiniciar() ? 'missao' : 'jogo'; abrirPainel('confirmar'); }
   else if (nome === 'confirmar_sim') { if (confirmarTipo === 'jogo') recomecarJogo(); else reiniciarMissao(missaoParaReiniciar()!); pausar(false); }
   else if (nome === 'recomecar') { recomecarMissao(); pausar(false); }
@@ -176,11 +182,14 @@ const EVENTOS_DA_CENA: Record<string, string[]> = {
   ponte_navegacao: ['missao_completa_ponte', 'acender_luz_ponte'],
   treino_captura: ['missao_completa_treinamento', 'acender_luz_treinamento'],
   oficina_energia: ['missao_completa_oficina', 'acender_luz_oficina'],
+  portal_saida: ['abrir_portal'],
+  tunel_despedida: [],
 };
 
 /** Começa a cena de uma missão (o treinamento também solta os clones da máquina). */
 function iniciarMissao(id: string): void {
   if (id === 'treino_captura') comecarTreino();
+  if (id === 'tunel_despedida') { irParaOTunel(); return; }   // o túnel começa com a troca (escurece, leva o jogador)
   void iniciarCena(id);
 }
 /** A missão volta ao começo (o que o jogador mexeu volta para o lugar). */
@@ -188,12 +197,16 @@ function zerarMissao(id: string): void {
   if (id === 'ponte_navegacao') zerarPonte();
   if (id === 'treino_captura') zerarTreino();
   if (id === 'oficina_energia') zerarOficina();
+  if (id === 'portal_saida' || id === 'tunel_despedida') zerarPortal();
 }
+/** As 3 luzes acesas: a faixa do chão até a câmara do portal acende. */
+function conferirTresLuzes(instantaneo = false): void { if (tresLuzes() && !progresso.eventos.includes('acender_caminho_portal')) aplicarEvento('acender_caminho_portal', instantaneo); }
 
 function marcarConcluida(id: string): void {
   if (!progresso.cenasConcluidas.includes(id)) progresso.cenasConcluidas.push(id);
   const r = diretor.rodando.get(id); if (r) { r.geracao++; r.estado = 'terminada'; if (diretor.ativa === r) diretor.ativa = null; }
   for (const e of EVENTOS_DA_CENA[id] ?? []) aplicarEvento(e, true);
+  conferirTresLuzes(true);
   salvarProgresso();
 }
 
@@ -226,8 +239,8 @@ function recomecarJogo(): void { zerarTudo(); comecarAbertura(); }
 function zerarTudo(): void {
   diretor.forcarAguardar = false; sairDoFoco();
   for (const c of CENAS_DO_JOGO) zerarCena(c);
-  zerarAbertura(); zerarPonte(); zerarTreino(); zerarOficina();
-  desfazerEventos(Object.values(EVENTOS_DA_CENA).flat());
+  zerarAbertura(); zerarPonte(); zerarTreino(); zerarOficina(); zerarPortal();
+  desfazerEventos([...Object.values(EVENTOS_DA_CENA).flat(), 'acender_caminho_portal']);
   apagarProgresso();
 }
 function recomecarMissao(): void { const id = missaoParaReiniciar(); if (id) reiniciarMissao(id); else recomecarJogo(); }
@@ -236,7 +249,13 @@ function irPara(id: string): void {
   diretor.forcarAguardar = false; sairDoFoco();
   if (id === 'sala_abertura') recomecarJogo();
   else if (id in EVENTOS_DA_CENA) {
-    marcarConcluida('sala_abertura'); zerarCena(id); zerarMissao(id); desfazerEventos(EVENTOS_DA_CENA[id]);
+    marcarConcluida('sala_abertura');
+    if (id === 'portal_saida' || id === 'tunel_despedida') {
+      // o final precisa das 3 missões feitas (modo de teste: completa as três)
+      for (const m of ['ponte_navegacao', 'treino_captura', 'oficina_energia']) if (!progresso.cenasConcluidas.includes(m)) marcarConcluida(m);
+      ponteConcluida(); completarTreino(); oficinaConcluida();
+    }
+    zerarCena(id); zerarMissao(id); desfazerEventos(EVENTOS_DA_CENA[id]);
     const c = diretor.rodando.get(id)!.cena; teleportar(c.jogador.pos, c.jogador.rotY);
     iniciarMissao(id);
   } else {
@@ -253,14 +272,19 @@ function completarMissao(): void {
   if (m === 'ponte_navegacao') completarPonte();
   if (m === 'treino_captura') completarTreino();
   if (m === 'oficina_energia') completarOficina();
+  if (m === 'portal_saida') completarPortal();
   diretor.forcarAguardar = true;
 }
 
-diretor.manual = (texto) => manualAbertura(texto) || manualPonte(texto) || manualTreino(texto) || manualOficina(texto);
-diretor.aoEvento = (nome) => { aplicarEvento(nome); if (nome === 'ligar_console') ponte.tangramAtivo = true; if (nome === 'acender_led') trocarLedPeloAceso(); };
+diretor.manual = (texto) => manualAbertura(texto) || manualPonte(texto) || manualTreino(texto) || manualOficina(texto) || manualPortal(texto);
+diretor.aoEvento = (nome) => { aplicarEvento(nome); if (nome === 'ligar_console') ponte.tangramAtivo = true; if (nome === 'acender_led') trocarLedPeloAceso();
+  if (nome === 'iniciar_tunel') irParaOTunel();
+  if (nome === 'mostrar_creditos') { if (document.pointerLockElement) document.exitPointerLock(); mostrarCreditos(() => { abrirPainel('creditos'); redesenharLogo(); }); }
+};
 diretor.aoTerminar = (id) => {
   diretor.forcarAguardar = false;
   for (const e of EVENTOS_DA_CENA[id] ?? []) aplicarEvento(e, true);
+  conferirTresLuzes();
 };
 
 // =====================================================================
@@ -330,7 +354,12 @@ cena3d.add(dicaVR.malha);
 // =====================================================================
 async function carregar(): Promise<void> {
   await Promise.all([carregarDados(), document.fonts.load("800 40px 'Baloo 2'"), document.fonts.load("700 40px 'Nunito'"), document.fonts.load("400 40px 'Nunito'")]);
+  // o túnel fica longe da nave (no Editor de Cenas ele está na origem)
+  const tunel = biblioteca.pacote?.cenas.find((c) => c.id === 'tunel_despedida'); if (tunel) deslocarCena(tunel, DESLOCAMENTO_TUNEL);
   await montarNave((k) => progressoCarregamento(Math.min(0.97, k)));
+  montarPortal();
+  void fetch(url('imagens/creditos_foto.jpg')).then(async (r) => { if (!r.ok || !/image/.test(r.headers.get('content-type') ?? '')) return;
+    const b = await r.blob(); const fr = new FileReader(); fr.onload = () => { fotoCreditos = String(fr.result); }; fr.readAsDataURL(b); }).catch(() => {});
   registrarPortas();
   montarAbertura();
   montarPonte();
@@ -354,9 +383,10 @@ async function carregar(): Promise<void> {
   if (progresso.cenasConcluidas.includes('ponte_navegacao')) ponteConcluida();
   if (progresso.cenasConcluidas.includes('treino_captura')) completarTreino();
   if (progresso.cenasConcluidas.includes('oficina_energia')) oficinaConcluida();
+  conferirTresLuzes(true);
   await prepararSons(['sfx_passar_mao', 'sfx_segurar', 'sfx_soltar', 'sfx_caixa_impacto', 'sfx_porta_abrir', 'sfx_porta_fechar', 'sfx_botao_porta',
     'sfx_tangram_girar', 'sfx_tangram_encaixa', 'sfx_tangram_completo', 'sfx_encaixe_cyberdeck', 'mus_sala_central', 'mus_abertura',
-    'sfx_arma_disparo', 'sfx_bolinha_esconderijo', 'sfx_captura', 'sfx_botao_nao_aperte', 'sfx_protoboard_encaixe', 'sfx_peca_errada', 'treino_gojo_001', 'treino_fred_001']);
+    'sfx_alavanca_puxar', 'sfx_alavanca_travada', 'mus_creditos', 'sfx_arma_disparo', 'sfx_bolinha_esconderijo', 'sfx_captura', 'sfx_botao_nao_aperte', 'sfx_protoboard_encaixe', 'sfx_peca_errada', 'treino_gojo_001', 'treino_fred_001']);
   pronto = true;
   progressoCarregamento(1);
   renderizador.setAnimationLoop(quadro);
@@ -436,13 +466,13 @@ function quadro(): void {
   if (entrada.modo === 'vr') lerVR(dt); else lerPC(dt, camera);
 
   // ---- menu ----
-  if (entrada.menuBorda) {
+  if (entrada.menuBorda && portal.creditos < 0) {
     if (emFoco()) { sairDoFoco(); }
     else if (painelAberto()) pausar(false);
     else pausar(true);
   }
   const pausado = !!painelAberto();
-  jogador.parado = pausado || emFoco() || foco > 0;
+  jogador.parado = pausado || emFoco() || foco > 0 || portal.creditos >= 0 || jogador.viajando;
   atualizarJogador(dt);
   if (entrada.modo === 'pc') aplicarFocoPC(dt);
   const agora = tempoGlobal();
@@ -453,15 +483,18 @@ function quadro(): void {
     atualizarPonte(dt, false);
     atualizarTreino(dt, false);
     atualizarOficina(dt, false);
+    atualizarPortal(dt, false);
     atualizarAbertura();
     atualizarToque(agora);
     usarBotoesDasPortas();
     comecarMissaoDaSala();
   }
   atualizarDiretor(dt, pausado);
+  atualizarPortalDepois();
+  atualizarTelaFinal(dt);
   // na câmera de foco do PC a seta da cena atrapalha a montagem
   if (emFoco()) apontar(null, camera.position, camera.position, 0);
-  atualizarMusica();
+  if (portal.creditos >= 0) tocarMusica('mus_creditos'); else atualizarMusica();
   atualizarEfeitosMundo();
   atualizarPaineis();
   if (entrada.pularFalaBorda && !pausado) pularFala();
@@ -524,7 +557,7 @@ let ultimaDica = '';
 function atualizarDicas(): void {
   const pausado = !!painelAberto();
   if (entrada.modo === 'vr') {
-    const fonte = [ponte, oficina, treino].find((x) => x.dicaLado && x.dicaTexto);
+    const fonte = [ponte, oficina, treino, portal].find((x) => x.dicaLado && x.dicaTexto);
     const lado = fonte?.dicaLado;
     if (fonte && lado && !pausado) {
       const p = entrada.maos[lado].pose.getWorldPosition(new THREE.Vector3()); p.y += 0.12;
@@ -537,7 +570,7 @@ function atualizarDicas(): void {
   let t = '';
   if (!pausado) {
     const m = entrada.maos.dir;
-    const dicaMissao = ponte.dicaTexto || oficina.dicaTexto || treino.dicaTexto;
+    const dicaMissao = ponte.dicaTexto || oficina.dicaTexto || treino.dicaTexto || portal.dicaTexto;
     if (dicaMissao) t = dicaMissao;
     else if (segurando(m)) t = 'Clique direito: soltar';
     else if (objetoNaMao(m)) t = 'Clique direito: pegar';
@@ -558,7 +591,7 @@ window.__jogo = {
   pronto: () => pronto, jogando: () => jogando, diretor, progresso, ponte, abertura, entrada, jogador, seguraveis, instancias, camera,
   agir, acionar, alvosAbertos, painelAberto, irPara, completarMissao, teleportar, tocar,
   pecas: _pecasTangram, lugares: _lugaresTangram, consoleParaMundo: _consoleParaMundo,
-  historicoAvulsas, tocadasAvulsas, vozesJuntas, setaVisivel, capturarTeste: _capturarTeste, ctxAgora: () => contextoAudio().currentTime, testeTempo, treino, oficina, clones: _clones, oQueAcerta: _oQueAcerta, simularClones: _simular, atirarEm: _atirarEm, pecasOficina: _pecasOficina, alvosOficina: _alvosOficina,
+  portal, escuro: _escuro, historicoAvulsas, tocadasAvulsas, vozesJuntas, setaVisivel, capturarTeste: _capturarTeste, ctxAgora: () => contextoAudio().currentTime, testeTempo, treino, oficina, clones: _clones, oQueAcerta: _oQueAcerta, simularClones: _simular, atirarEm: _atirarEm, pecasOficina: _pecasOficina, alvosOficina: _alvosOficina,
   estadoCenas: () => [...diretor.rodando.values()].map((r) => ({ id: r.cena.id, estado: r.estado, t: +r.t.toFixed(2) })),
   pedido: pedidoAtual, ctx: () => contextoAudio().state, three: THREE, prenderRelogio, portasAbertas, grupoPainel,
 };

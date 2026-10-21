@@ -33,7 +33,8 @@ const LUGAR: Record<string, { alvo: string; desenho: string }> = {
 };
 /** As pegadinhas parecem com estas (para a sombra e para o PC alinhar a peça). */
 const PARECE: Record<string, string> = { resistor_queimado: 'resistor', jumper_curto: 'jumper_vermelho' };
-const ENCAIXE = 0.12;       // m: soltar até esta distância do lugar encaixa ("clique" magnético)
+// m: soltar até esta distância do lugar encaixa ("clique" magnético). 21/10: no PC a placa fica longe na tela, então a atração é maior
+const encaixe = () => (entrada.modo === 'pc' ? 0.2 : 0.14);
 const SOMBRA = 0.3;         // m: perto assim, aparece a sombra Lima no lugar
 const giro180 = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
 
@@ -103,10 +104,10 @@ function tentarEncaixar(id: string, lado: 'esq' | 'dir' | null): boolean {
   const parecido = alvoDe(id);
   if (!LUGAR[id]) {
     // pegadinha perto do lugar da peça parecida: não encaixa
-    if (parecido && pertoDe(p, parecido.pos, ENCAIXE * 1.5)) { tocar('sfx_peca_errada', { em: parecido.pos }); vibrarTipo(lado, 'perto'); }
+    if (parecido && pertoDe(p, parecido.pos, encaixe() * 1.5)) { tocar('sfx_peca_errada', { em: parecido.pos }); vibrarTipo(lado, 'perto'); }
     return false;
   }
-  const a = alvos.get(id)!; if (!pertoDe(p, a.pos, ENCAIXE) || afastou.get(id) === false) return false;
+  const a = alvos.get(id)!; if (!pertoDe(p, a.pos, encaixe()) || afastou.get(id) === false) return false;
   const e = poseEncaixe(id, s.inst.raiz.quaternion)!;
   s.estado = 'repouso'; s.vel.set(0, 0, 0); s.mao = null;
   s.inst.raiz.position.copy(e.pos); s.inst.raiz.quaternion.copy(e.quat);

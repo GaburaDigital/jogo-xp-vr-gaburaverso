@@ -22,6 +22,7 @@ export const jogador = {
   olhandoRelogio: false,
   relogioPC: false,               // PC: R levanta o pulso
   alturaExtra: 0,                 // VR: m somados à plataforma (jogar sentado)
+  viajando: false,                // túnel: a plataforma leva o jogador (vinheta de conforto leve)
   /** Posto de missão: o jogador só anda dentro deste retângulo (treinamento: só para os lados). */
   limites: null as { x0: number; x1: number; z0: number; z1: number } | null,
 };
@@ -171,7 +172,7 @@ export function atualizarJogador(dt: number): void {
     rig.position.x += x - cabeca.x; rig.position.z += z - cabeca.z;
   }
   // ---- conforto: escurece as bordas enquanto anda ou gira ----
-  const alvo = opcoes.bordas && (jogador.andando || girando) ? 0.85 : 0;
+  const alvo = opcoes.bordas && (jogador.andando || girando) ? 0.85 : jogador.viajando ? 0.45 : 0;
   const mat = vinheta.material as THREE.MeshBasicMaterial;
   mat.opacity += (alvo - mat.opacity) * Math.min(1, dt * 8);
   vinheta.visible = mat.opacity > 0.01;

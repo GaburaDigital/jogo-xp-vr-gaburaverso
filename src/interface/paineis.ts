@@ -9,7 +9,7 @@ import { opcoes } from '../nucleo/config';
 import { entrada } from '../xr/entrada';
 import { camera, cena3d } from '../mundo/mundo';
 
-export type TipoPainel = 'pausa' | 'opcoes' | 'como_jogar' | 'missao' | 'teste' | 'senha' | 'confirmar';
+export type TipoPainel = 'pausa' | 'opcoes' | 'como_jogar' | 'missao' | 'teste' | 'senha' | 'confirmar' | 'creditos';
 
 export interface ContextoPaineis {
   vr: boolean;
@@ -25,6 +25,8 @@ export interface ContextoPaineis {
   nomeReiniciar: string;         // nome da missão que "Reiniciar missão" vai reiniciar
   contagemAltura: number;        // 3, 2, 1 enquanto ajusta a altura (0 = parado)
   botoesBrutos: string;          // números dos botões apertados (diagnóstico do ≡)
+  creditos: number;              // etapa dos créditos (0 a 4)
+  fotoCreditos: string | null;   // foto do autor com os alunos (data URL), ou null = espaço reservado
 }
 
 export interface Desenho { w: number; h: number; corpo: string; alvos: Alvo[]; }
@@ -114,7 +116,7 @@ function desenharTeste(c: ContextoPaineis): Desenho {
   comecarAlvos();
   const corpo = `<rect x="4" y="100" width="992" height="10" fill="${C.coral}"/>` +
     T(40, 160, 'IR PARA A CENA', { f: 'n', s: 20, w: 700, c: C.aqua, ls: 2 }) +
-    [['Abertura', 'ir:sala_abertura'], ['Ponte', 'ir:ponte_navegacao'], ['Treinamento', 'ir:treino_captura'], ['Oficina', 'ir:oficina_energia'], ['Livre', 'ir:livre']].map(([t, a], i) => botao(40 + i * 186, 182, 176, 62, t, { tipo: 'suave', s: 21, acao: a })).join('') +
+    [['Abertura', 'ir:sala_abertura'], ['Ponte', 'ir:ponte_navegacao'], ['Treino', 'ir:treino_captura'], ['Oficina', 'ir:oficina_energia'], ['Portal', 'ir:portal_saida'], ['Túnel', 'ir:tunel_despedida'], ['Livre', 'ir:livre']].map(([t, a], i) => botao(40 + i * 133, 182, 125, 62, t, { tipo: 'suave', s: 19, acao: a })).join('') +
     botao(40, 270, 450, 66, 'Completar a missão', { ic: 'missao', s: 26, acao: 'completar' }) + botao(510, 270, 450, 66, 'Recomeçar a cena', { tipo: 'suave', s: 26, ic: 'recomecar', icCor: C.aqua, acao: 'recomecar' }) +
     chave(40, 386, 'Medidor de quadros por segundo', c.medidorQps, null, 'qps') + chave(40, 446, 'Atravessar paredes', c.atravessar, null, 'atravessar') +
     R(40, 490, 920, 170, { r: 18, f: C.sup }) + T(64, 530, 'Botões do controle (ao vivo)', { s: 26 }) +
@@ -140,8 +142,29 @@ function desenharSenha(c: ContextoPaineis): Desenho {
   return { w: 500, h: 670, corpo: painel(500, 670, 'Modo de teste', '', corpo, { ic: 'teste' }), alvos: pegarAlvos() };
 }
 
+/** Créditos (aprovados em 16/10): aparecem nesta ordem, um de cada vez, sobre a imagem escura. */
+function desenharCreditos(c: ContextoPaineis): Desenho {
+  comecarAlvos();
+  const W = 1000, H = 800, e = c.creditos;
+  let corpo = R(0, 0, W, H, { r: 36, f: C.fundo, st: C.linha, sw: 2 });
+  corpo += T(W / 2, 70, 'para meus melhores amigos', { s: 40, a: 'middle', c: C.texto });
+  if (e >= 1) {
+    // foto 4:3 (1600 × 1200) com os rostos cobertos por emojis; enquanto não chega, um espaço reservado
+    const fw = 400, fh = 300, fx = (W - fw) / 2, fy = 100;
+    corpo += c.fotoCreditos
+      ? `<image href="${c.fotoCreditos}" x="${fx}" y="${fy}" width="${fw}" height="${fh}" preserveAspectRatio="xMidYMid slice"/>` + R(fx, fy, fw, fh, { r: 16, f: 'none', st: C.linha, sw: 3 })
+      : R(fx, fy, fw, fh, { r: 16, f: C.sup, st: C.linha, sw: 3 }) + T(W / 2, fy + fh / 2 + 8, 'foto do autor com os alunos', { f: 'n', s: 24, a: 'middle', c: C.texto2 });
+  }
+  if (e >= 2) corpo += T(W / 2, 480, 'Obrigado por jogar!', { s: 56, a: 'middle', c: C.lima }) + T(W / 2, 530, '2026 · Criado por Gabura', { f: 'n', s: 30, w: 700, a: 'middle', c: C.texto });
+  if (e >= 3) corpo += T(W / 2, 590, 'Encontre mais aventuras do Gaburaverso em', { f: 'n', s: 26, a: 'middle', c: C.texto2 }) + T(W / 2, 630, 'gabura.com.br', { s: 34, a: 'middle', c: C.aqua });
+  if (e >= 4) corpo += botao(160, 680, 320, 88, c.vr ? 'Sair do VR' : 'Sair', { tipo: 'contorno', s: 30, ic: 'sair', acao: 'creditos_sair' }) +
+    botao(520, 680, 320, 88, 'Recomeçar', { s: 30, ic: 'do_inicio', acao: 'confirmar:jogo' });
+  return { w: W, h: H, corpo, alvos: pegarAlvos() };
+}
+
 const DESENHOS: Record<TipoPainel, (c: ContextoPaineis) => Desenho> = {
   pausa: desenharPausa, opcoes: desenharOpcoes, como_jogar: desenharComoJogar, missao: desenharMissao, teste: desenharTeste, senha: desenharSenha, confirmar: desenharConfirmar,
+  creditos: desenharCreditos,
 };
 
 /** O desenho de um painel (a tela inicial do navegador usa os mesmos desenhos). */

@@ -1,11 +1,47 @@
 """Funções comuns dos testes automáticos no computador (Playwright + Chrome sem janela)."""
-import time, json
+import time, json, os, signal, subprocess, atexit, urllib.request
+from contextlib import contextmanager
 from playwright.sync_api import sync_playwright
-import os
 F = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fotos') + '/'
 os.makedirs(F, exist_ok=True)
 URL = os.environ.get('URL_JOGO', 'http://localhost:4180/jogo-xp-vr-gaburaverso/')
+RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# ---------- servidor local: o próprio teste liga e SEMPRE desliga (regra de 21/10: nada fica rodando) ----------
+def _respondendo(url=URL):
+    try: urllib.request.urlopen(url, timeout=1); return True
+    except Exception: return False
+
+@contextmanager
+def servidor(porta=4180):
+    """Liga o `vite preview` (o jogo já montado em dist/), espera responder e desliga no fim, mesmo se o teste falhar.
+    Se já houver um servidor nessa porta (ex.: o rodar_todos.py), usa o que existe e não desliga."""
+    if _respondendo():
+        yield; return
+    proc = subprocess.Popen(['npx', 'vite', 'preview', '--port', str(porta), '--strictPort'], cwd=RAIZ,
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    def desligar():
+        try: os.killpg(proc.pid, signal.SIGTERM); proc.wait(timeout=5)
+        except Exception: pass
+    atexit.register(desligar)            # também se o teste for interrompido no meio
+    try:
+        for _ in range(80):
+            if _respondendo(): break
+            time.sleep(0.25)
+        yield
+    finally:
+        desligar()
+
+_ligado = None
+def _garantir_servidor():
+    """Usado por abrir(): liga o servidor na primeira vez e deixa o desligar para o fim do processo."""
+    global _ligado
+    if _ligado is None and not _respondendo():
+        _ligado = servidor(); _ligado.__enter__()
+        atexit.register(lambda: _ligado.__exit__(None, None, None))
+
 def abrir(p, w=1280, h=720):
+    _garantir_servidor()
     b = p.chromium.launch(headless=False, args=['--headless=new', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--autoplay-policy=no-user-gesture-required'])
     pg = b.new_page(viewport={'width': w, 'height': h}); pg.set_default_timeout(60000)
     erros = []

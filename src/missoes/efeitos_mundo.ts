@@ -18,8 +18,10 @@ const PERMANENTES: Record<string, [string, string][]> = {
   acender_luz_ponte: [['painel_luzes', 'acender_ponte'], ['sala_ponte', 'acender_faixa']],
   acender_luz_treinamento: [['painel_luzes', 'acender_treinamento'], ['sala_treinamento', 'acender_faixa'], ['faixas_chao', 'acender_treinamento']],
   acender_luz_oficina: [['painel_luzes', 'acender_oficina'], ['sala_oficina', 'acender_faixa'], ['faixas_chao', 'acender_oficina']],
+  acender_caminho_portal: [['faixas_chao', 'acender_portal']],   // as 3 luzes acesas: a faixa até o portal acende
+  abrir_portal: [['sala_portal', 'acender_faixa']],
 };
-const LUZES = new Set(['acender_luz_ponte', 'acender_luz_treinamento', 'acender_luz_oficina']);
+const LUZES = new Set(['acender_luz_ponte', 'acender_luz_treinamento', 'acender_luz_oficina', 'abrir_portal']);
 /** Missão completa → LED da missão no relógio. */
 const LED_DA_MISSAO: Record<string, 'ponte' | 'treinamento' | 'oficina'> = {
   missao_completa_ponte: 'ponte', missao_completa_treinamento: 'treinamento', missao_completa_oficina: 'oficina',
