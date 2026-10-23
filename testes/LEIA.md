@@ -26,6 +26,7 @@ Os testes **ligam e desligam o servidor sozinhos** (`servidor()` em `base.py`): 
 | `teste_clones.py` | clones sem travar: 20 rodadas da saída dos 16 clones (simulação a 30 qps, sem desenhar); conta tremidas (anda-para-anda em menos de 0,3 s), paradas e clones encostados |
 | `teste_entrega21.py` | portas com botão (abre, fecha, abre por dentro, fecha ao voltar), seta que some no posto, capturas rápidas sem uma fala por cima da outra, clones com a cor normal |
 | `teste_final.py` | final: as 3 luzes acendem a faixa do portal, alavanca travada sem as luzes, puxar a alavanca, atravessar, túnel (a plataforma leva o jogador, hologramas), créditos em ordem com Sair e Recomeçar |
+| `fotos_divulgacao.py` | não é teste: tira as 6 fotos de divulgação (1280×720, sem a interface do PC) em `testes/fotos/divulgacao/`; as escolhidas vão para `docs/telas/` |
 | `teste_missoes.py` | reiniciar o treinamento no meio, trocar de sala com uma missão pela metade, recarregar com tudo feito |
 
 O jogo expõe `window.__jogo` (estado e funções) só para estes testes. `j.testeTempo.escala` acelera a simulação (o Chrome sem placa de vídeo roda a uns 5 quadros por segundo). O teste final continua sendo no Quest.
